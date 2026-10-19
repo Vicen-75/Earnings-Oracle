@@ -46,3 +46,39 @@ def annual_operating_income(cik):
         if 350 <= days <= 380:          # keep full years only, drop quarters
             annual[row["end"]] = row["val"]
     return dict(sorted(annual.items(), reverse=True))
+
+
+# --- Javier: company card for tool calling (code written with help from Claude) ---
+
+def company_card(ticker):
+    """Everything the model needs to decide what to fetch next, in one small dict.
+    Returns {"error": ...} on failure so the model can read why (tool calling needs a handled path)."""
+    cik, name = ticker_to_cik(ticker)
+    if cik is None:
+        return {"error": f"ticker '{ticker}' not found on EDGAR"}
+    submissions = requests.get(f"https://data.sec.gov/submissions/CIK{cik}.json", headers=HEADERS).json()
+    filings = list_10ks(cik, how_many=3)
+    income = annual_operating_income(cik)
+    return {
+        "ticker": ticker.upper().strip(),
+        "name": name,
+        "cik": cik,
+        "sic_code": submissions.get("sic"),
+        "sic_description": submissions.get("sicDescription"),
+        "fiscal_year_end_mmdd": submissions.get("fiscalYearEnd"),
+        "ten_k_filings": filings,                                   # [] means the company files 20-F or similar
+        "has_operating_income_tag": income is not None,             # False for most banks and insurers
+        "operating_income_years_available": list(income.keys())[:3] if income else [],
+    }
+
+
+def fiscal_year_end_in(cik, calendar_year):
+    """Return the fiscal-year-end date (YYYY-MM-DD) whose calendar year matches, e.g. 2025 -> '2025-09-27' for AAPL.
+    None if the company does not report OperatingIncomeLoss or has no full year ending in that calendar year."""
+    income = annual_operating_income(cik)
+    if not income:
+        return None
+    for end in income:                                               # newest first
+        if end.startswith(str(calendar_year)):
+            return end
+    return None
