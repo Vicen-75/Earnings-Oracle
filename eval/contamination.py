@@ -135,22 +135,53 @@ def check_company(ticker, target_end=None, target_calendar_year=2025, verbose=Tr
     return row
 
 
+FIELDS = ["ticker", "name", "target_end", "prior_end", "truth", "truth_billion_usd", "fy_model_direction", "fy_model_value",
+          "fy_knows", "quarters_known", "latest_period_known", "control_knows", "control_model_value",
+          "control_truth_billion_usd", "verdict"]
+
+
+# --- Vicente: crash-proof run (Oct 21). Gemini's free tier sometimes answers 503 "model overloaded" for minutes.
+# Before, one such company stopped the whole run and nothing was saved. Now: a failing company is recorded as
+# ERROR_RETRY_LATER, the file is saved after every company, and running again only redoes the missing or failed ones.
 def run_candidates(path=CANDIDATES_PATH, out=RESULTS_PATH):
-    rows = []
     with open(path, newline="") as f:
-        for cand in csv.DictReader(f):
-            year = int(cand.get("target_calendar_year") or 2025)
-            target_end = (cand.get("target_end") or "").strip() or None
-            rows.append(check_company(cand["ticker"].strip(), target_end=target_end, target_calendar_year=year))
-    fields = ["ticker", "name", "target_end", "prior_end", "truth", "truth_billion_usd", "fy_model_direction", "fy_model_value",
-              "fy_knows", "quarters_known", "latest_period_known", "control_knows", "control_model_value",
-              "control_truth_billion_usd", "verdict"]
+        candidates = list(csv.DictReader(f))
+
+    results = {}                                         # ticker -> row, kept from a previous run
+    if out.exists():
+        with open(out, newline="") as f:
+            results = {r["ticker"]: r for r in csv.DictReader(f)}
+
+    for cand in candidates:
+        ticker = cand["ticker"].strip()
+        previous = results.get(ticker)
+        if previous and not previous["verdict"].startswith("ERROR"):
+            print(f"\n{ticker}: already done ({previous['verdict']}), skipping")
+            continue
+        year = int(cand.get("target_calendar_year") or 2025)
+        target_end = (cand.get("target_end") or "").strip() or None
+        try:
+            results[ticker] = check_company(ticker, target_end=target_end, target_calendar_year=year)
+        except Exception as error:                      # Gemini overloaded, unparseable answer, network error...
+            print(f"\n{ticker}: failed ({type(error).__name__}), will retry on the next run")
+            results[ticker] = {"ticker": ticker, "verdict": "ERROR_RETRY_LATER"}
+        _save(results, candidates, out)                 # save after every company, so nothing is lost
+
+    verdicts = [results[c["ticker"].strip()]["verdict"] for c in candidates if c["ticker"].strip() in results]
+    ok = sum(v.startswith("OK") for v in verdicts)
+    errors = sum(v.startswith("ERROR") for v in verdicts)
+    print(f"\n{ok} of {len(candidates)} candidates usable, {errors} failed (run again to retry them). Results in {out}")
+
+
+def _save(results, candidates, out):
+    """Write the results file in the same order as candidates.csv."""
     with open(out, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+        writer = csv.DictWriter(f, fieldnames=FIELDS, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(r for r in rows if r)
-    ok = sum(1 for r in rows if r and r["verdict"].startswith("OK"))
-    print(f"\n{ok} of {len(rows)} candidates usable. Results written to {out}")
+        for cand in candidates:
+            row = results.get(cand["ticker"].strip())
+            if row:
+                writer.writerow(row)
 
 
 if __name__ == "__main__":
