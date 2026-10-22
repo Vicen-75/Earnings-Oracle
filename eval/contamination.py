@@ -9,6 +9,7 @@
 # Run from the repository root:
 #   python -m eval.contamination                      # uses eval/candidates.csv, writes eval/contamination_results.csv
 #   python -m eval.contamination AAPL MSFT JPM        # quick check on a few tickers, no CSV written
+#   python -m eval.contamination --fresh              # ignore previous results and check every candidate again
 #
 # candidates.csv columns: ticker, target_calendar_year (default 2025), target_end (optional, YYYY-MM-DD; overrides the year)
 import csv
@@ -143,12 +144,14 @@ FIELDS = ["ticker", "name", "target_end", "prior_end", "truth", "truth_billion_u
 # --- Vicente: crash-proof run (Oct 21). Gemini's free tier sometimes answers 503 "model overloaded" for minutes.
 # Before, one such company stopped the whole run and nothing was saved. Now: a failing company is recorded as
 # ERROR_RETRY_LATER, the file is saved after every company, and running again only redoes the missing or failed ones.
-def run_candidates(path=CANDIDATES_PATH, out=RESULTS_PATH):
+def run_candidates(path=CANDIDATES_PATH, out=RESULTS_PATH, fresh=False):
     with open(path, newline="") as f:
         candidates = list(csv.DictReader(f))
 
     results = {}                                         # ticker -> row, kept from a previous run
-    if out.exists():
+    if fresh:
+        print("--fresh: ignoring previous results, every company is checked again")
+    elif out.exists():
         with open(out, newline="") as f:
             results = {r["ticker"]: r for r in csv.DictReader(f)}
 
@@ -185,8 +188,11 @@ def _save(results, candidates, out):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        for t in sys.argv[1:]:
+    # --- Vicente: --fresh option (Oct 22, Javier's review of PR #20). A normal run only redoes failed companies,
+    # so after changing candidates.csv or the leak rule, old results would be silently kept. --fresh starts from zero.
+    args = [a for a in sys.argv[1:] if a != "--fresh"]
+    if args:
+        for t in args:
             check_company(t)
     else:
-        run_candidates()
+        run_candidates(fresh="--fresh" in sys.argv)
