@@ -3,7 +3,7 @@ AAPL,2025,,large cap tech; FY ends Sep
 MSFT,2025,,large cap tech; FY ends Jun
 CAT,2025,,industrial; FY ends Dec
 DE,2025,,industrial; FY ends Oct
-HD,2025,,retail; FY ends ~Feb 1 2026 (check target_end)
+HD,2026,,retail; FY2025 ends ~Feb 1 2026, so the target year is looked up in calendar 2026
 KO,2025,,consumer staples; FY ends Dec
 PEP,2025,,consumer staples; FY ends Dec
 XOM,2025,,energy; FY ends Dec
@@ -20,6 +20,6 @@ MCD,2025,,restaurants; FY ends Dec
 TXN,2025,,semiconductors; FY ends Dec
 WM,2025,,waste services; FY ends Dec
 ETN,2025,,electrical equipment; FY ends Dec
-ROST,2025,,retail; FY ends ~Jan 31 2026 (check target_end)
+ROST,2026,,retail; FY2025 ends ~Jan 31 2026, so the target year is looked up in calendar 2026
 JPM,2025,,bank; expected NO_OPERATING_INCOME_TAG until substitute tag is defined
 PGR,2025,,insurer; expected NO_OPERATING_INCOME_TAG until substitute tag is defined
