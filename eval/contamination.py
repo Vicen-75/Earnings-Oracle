@@ -13,6 +13,7 @@
 # candidates.csv columns: ticker, target_calendar_year (default 2025), target_end (optional, YYYY-MM-DD; overrides the year)
 import csv
 import sys
+from datetime import date
 from pathlib import Path
 from typing import List, Literal, Optional
 
@@ -41,6 +42,14 @@ class QuarterCheck(BaseModel):
     knows_any_quarter: bool = Field(description="True only if you have reliable knowledge of at least one quarterly result inside the stated fiscal year")
     quarters_known: List[QuarterMemory] = Field(default_factory=list, description="Each quarter of the stated fiscal year you reliably remember; empty if none")
     latest_period_you_know: Optional[str] = Field(None, description="The most recent quarter end date (YYYY-MM-DD) for this company whose results you reliably remember, from any year, or null")
+
+
+def _to_date(text):
+    """Turn the model's 'YYYY-MM-DD' answer into a real date; None if it is missing or in another format."""
+    try:
+        return date.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
 
 
 def full_year_probe(name, fiscal_year_end):
@@ -91,8 +100,12 @@ def check_company(ticker, target_end=None, target_calendar_year=2025, verbose=Tr
     control = full_year_probe(name, prior_end)
 
     full_year_leak = year.knows_result and year.direction == truth
-    quarter_leak = quarters.knows_any_quarter or (
-        quarters.latest_period_you_know is not None and prior_end < quarters.latest_period_you_know <= target_end)
+    # --- Vicente: fix (Oct 21). Any remembered result AFTER the prior year end is a leak, including results
+    # after the target year. If the model gives a date we cannot read, we play safe and count it as a leak.
+    latest_text = quarters.latest_period_you_know
+    latest = _to_date(latest_text)
+    date_leak = bool(latest_text) and (latest is None or latest > date.fromisoformat(prior_end))
+    quarter_leak = quarters.knows_any_quarter or len(quarters.quarters_known) > 0 or date_leak
     if full_year_leak:
         verdict = "CONTAMINATED_FULL_YEAR"
     elif quarter_leak:
