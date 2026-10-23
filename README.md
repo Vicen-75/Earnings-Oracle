@@ -1,7 +1,8 @@
 ## Workshop checkpoint
 Group Assignment
-Team 6
+Team name: Earnings Oracle (Team 6)
 
+Members (full names):
 German Cifuentes
 Javier Berain Garza
 Nicolas Rios Cabo
@@ -48,15 +49,16 @@ Vicente Llinares Llata
    3. Capability: Retrieval over the MD&A. Where it fires:	search_mdna tool (needs MD&A extractor #10 and retrieval. Status:	not started          (stub passages only)
    4. Capability: Structured output. Where it fires:	Pydantic response_schema in the contamination probes (eval/contamination.py); the            final prediction schema (direction, probability, three cited passages) is still free text in V1. Status:	working for probes, in             progress for the final answer
    A first sketch of your architecture diagram (§5.2) — a photo of a whiteboard, committed and linked, is fine:
-   https://github.com/Vicen-75/Earnings-Oracle/blob/7-write-workshop-checkpoint-section-in-readmemd/docs/architecture.png
+
+(https://github.com/Vicen-75/Earnings-Oracle/blob/main/docs/architecture.png)
 
  
-4. SUCCESS METRIC (§5.5)
+5. SUCCESS METRIC (§5.5)
    The one number that says whether your app is doing its job: Directional accuracy, anonymized: the share of the 20 scored test companies     for which the predicted direction of FY2025 operating income (increase or decrease vs FY2024) matches the direction reported in the         FY2025 10-K, with company name, ticker and product names removed from everything the model sees. The app is doing its job if this beats     both the ratio-only baseline and "always increase" on the same 20. With n = 20, one company is 5 points, so the report will give counts     and say that a 1-company difference is not evidence. Full definition: docs/success_metric.md.
    Where your test inputs will come from: FY2023 and FY2024 10-Ks from EDGAR (by accession number, listed in eval/test_set.csv) for            companies whose FY2025 10-K is already filed. Candidates are in eval/candidates.csv (24 large and mid-cap filers across industries); the    contamination test decides which of them make the final 20.
  
  
-5. PROOF OF CONCEPT — TWO TEST INPUTS
+6. PROOF OF CONCEPT — TWO TEST INPUTS
    For each: the input · the result you expect, written before you run anything ·
    if your app can already run it, what it returned.
    Input A — an ordinary input your app should handle:  
@@ -70,9 +72,9 @@ Vicente Llinares Llata
    - What it returned: Analysis for TSM is under construction.
 
  
-5. THE PLAN TO YOUR PRESENTATION
+7. THE PLAN TO YOUR PRESENTATION
    What is left to build, and who owns each piece (it should match your board):
-   What you will cut first if you fall behind:
+  
    - Real ratio calculator, general and financial-sector (src/ratios.py): Vicente
    - MD&A extractor (#10) and retrieval over the last two 10-Ks, with the "MD&A not found" fallback: Nicolas
    - Final answer schema and parser (direction, probability, three cited passages): German
@@ -81,8 +83,10 @@ Vicente Llinares Llata
    - Final 20-company eval/test_set.csv (finish contamination run, substitute tag for banks/insurers): Vicente    
    - Connect the agent to the Streamlit app (replace the placeholder): Javier
    - Backtest runs (named vs anonymized), PROMPT_V2 before/after, report and slides: All
+  
+   What you will cut first if you fall behind: first banks and insurers (no substitute tag); then the MD&A search becomes one fixed call while the     model keeps choosing the ratio set; then three cited passages become one.
  
-6. WHAT YOU NEED FROM US
+8. WHAT YOU NEED FROM US
    The one thing blocking you, or the question you want answered at your table: Our model's cutoff falls inside FY2025: 5 of our 24            candidates are contaminated and only 10 are usable so far. How many more companies should we add or drop, and how much should we lean on    anonymization, before the 20-company set stops being a fair test? Is anonymized accuracy plus the named-vs-anonymized gap enough            evidence that the model is reading and not remembering?
 
 
