@@ -3,3 +3,4 @@
 .env
 cache/
 .streamlit/secrets.toml
+.venv/
