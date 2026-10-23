@@ -47,7 +47,8 @@ Vicente Llinares Llata
    2. Capability: Tool calling.	Where it fires: src/agent.py run(): the model chooses ratio set and MD&A queries, every call logged to             eval/tool_log.jsonl.	Status: in progress: loop and company card are real; ratio and MD&A tools are stubs (src/tools_stub.py)
    3. Capability: Retrieval over the MD&A. Where it fires:	search_mdna tool (needs MD&A extractor #10 and retrieval. Status:	not started          (stub passages only)
    4. Capability: Structured output. Where it fires:	Pydantic response_schema in the contamination probes (eval/contamination.py); the            final prediction schema (direction, probability, three cited passages) is still free text in V1. Status:	working for probes, in             progress for the final answer
-   A first sketch of your architecture diagram (§5.2) — a photo of a whiteboard, committed and linked, is fine: 
+   A first sketch of your architecture diagram (§5.2) — a photo of a whiteboard, committed and linked, is fine:
+   https://github.com/Vicen-75/Earnings-Oracle/blob/7-write-workshop-checkpoint-section-in-readmemd/docs/architecture.png
 
  
 4. SUCCESS METRIC (§5.5)
