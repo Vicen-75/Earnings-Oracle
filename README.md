@@ -12,9 +12,10 @@ Vicente Llinares Llata
    Attending the Oct 23 workshop? (yes / no): Yes
    Project board link (§5.7): https://github.com/users/Vicen-75/projects/1/views/1
    Streamlit app URL (must load; it does not yet have to do anything): https://earnings-oracle.streamlit.app/
+   Where your API key lives: Streamlit Community Cloud Secrets (App Settings → Secrets), stored as GEMINI_API_KEY and accessed by src/llm.py via st.secrets. For Colab testing, the key is stored in Colab Secrets. 
  
  
-1. THE PROJECT, AS IT STANDS TODAY
+2. THE PROJECT, AS IT STANDS TODAY
    Update these from your proposal — do not copy them across if they have changed.
    Who the user is: junior financial analyst building a stock pitch who wants a quick sense of the direction of a listed company's             earnings. (Unchanged from the proposal.)
    The task, in one sentence: The user gives a ticker, the tool reads the company's last two 10-Ks, and it predicts whether operating          income in the next fiscal year will increase or decrease versus the current one (or says "no data found").
