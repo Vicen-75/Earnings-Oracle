@@ -5,9 +5,8 @@
 # Run from the repository root:
 #   python -m src.agent CAT            # one ticker, prints the tool log and the answer
 #   python -m src.agent CAT JPM        # several
-# Set EARNINGS_ORACLE_STUBS=0 once the real ratio / MD&A tools exist (see IMPL below).
+# Tools whose real implementation does not exist yet answer 'under construction' (see IMPL below); nothing is simulated.
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -16,15 +15,23 @@ from google.genai import types
 
 from src import edgar
 from src.llm import client, MODEL
-from src.prompts import TOOL_SYSTEM_V1
+from src.prompts import TOOL_SYSTEM_V2
 
-USE_STUBS = os.environ.get("EARNINGS_ORACLE_STUBS", "1") != "0"
-if USE_STUBS:
-    from src import tools_stub as ratio_impl
-    from src import tools_stub as mdna_impl
-else:                                                   # swap in the real modules as they land
-    from src import ratios as ratio_impl               # noqa: F401  (issue: ratio calculator)
-    from src import retrieval as mdna_impl             # noqa: F401  (issue: retrieval over MD&A)
+from src import mdna as mdna_impl                      # real MD&A extractor (Nicolas)
+try:
+    from src import ratios as ratio_impl               # noqa: F401  (issue: ratio calculator, Vicente)
+except ImportError:
+    ratio_impl = None
+RATIOS_AVAILABLE = ratio_impl is not None
+
+
+def _under_construction(tool_name):
+    """Stand-in for a tool that is not built yet. It never invents data: it tells the model the tool is unavailable
+    so the answer rests on what remains (or becomes "no data found")."""
+    def tool(**kwargs):
+        return {"error": f"{tool_name} is under construction: no data available from this tool yet"}
+    return tool
+
 
 MAX_TOOL_CALLS = 6          # hard stop so one ticker cannot burn the free tier
 LOG_PATH = Path("eval/tool_log.jsonl")
@@ -51,20 +58,21 @@ TOOLS = types.Tool(function_declarations=[
         parameters=S(type="OBJECT", properties={"cik": S(type="STRING")}, required=["cik"]),
     ),
     types.FunctionDeclaration(
-        name="search_mdna",
-        description="Retrieve the most relevant Management's Discussion and Analysis passages from the last two 10-Ks "
-                    "for a question you write, e.g. 'management outlook on demand and margins next year'.",
-        parameters=S(type="OBJECT",
-                     properties={"cik": S(type="STRING"), "query": S(type="STRING"), "k": S(type="INTEGER")},
-                     required=["cik", "query"]),
+        name="get_mdna",
+        description="The full text of Management's Discussion and Analysis (Item 7) from the last two 10-Ks. "
+                    "Read it for management's outlook, demand, pricing, margins, costs and risks. "
+                    "Returns an error if the section cannot be found.",
+        parameters=S(type="OBJECT", properties={"cik": S(type="STRING")}, required=["cik"]),
     ),
 ])
 
 IMPL = {
     "get_company_card": edgar.company_card,
-    "compute_general_ratios": ratio_impl.compute_general_ratios,
-    "compute_financial_sector_ratios": ratio_impl.compute_financial_sector_ratios,
-    "search_mdna": mdna_impl.search_mdna,
+    "compute_general_ratios": ratio_impl.compute_general_ratios if RATIOS_AVAILABLE
+                              else _under_construction("compute_general_ratios"),
+    "compute_financial_sector_ratios": ratio_impl.compute_financial_sector_ratios if RATIOS_AVAILABLE
+                                       else _under_construction("compute_financial_sector_ratios"),
+    "get_mdna": mdna_impl.get_mdna,
 }
 
 
@@ -83,7 +91,7 @@ def _generate(contents, config):
     raise RuntimeError("gave up after repeated retries")
 
 
-def run(ticker, anonymize=False, system_instruction=TOOL_SYSTEM_V1, verbose=True):
+def run(ticker, anonymize=False, system_instruction=TOOL_SYSTEM_V2, verbose=True):
     """Let the model investigate one ticker with the tools. Returns (answer_text, log).
     log is a list of {"tool", "args", "ok"} in the order the model called them: that list is the evidence
     that tool calling is the model's decision (compare the log for an industrial vs a bank)."""
@@ -143,7 +151,7 @@ def _anonymize(result):
 def _write_log(ticker, log, answer, usage, anonymize):
     LOG_PATH.parent.mkdir(exist_ok=True)
     with open(LOG_PATH, "a") as f:
-        f.write(json.dumps({"ticker": ticker, "anonymized": anonymize, "stubs": USE_STUBS, "tools": log,
+        f.write(json.dumps({"ticker": ticker, "anonymized": anonymize, "ratios_available": RATIOS_AVAILABLE, "tools": log,
                             "usage": usage, "answer": answer, "ts": time.strftime("%Y-%m-%d %H:%M:%S")}) + "\n")
 
 
