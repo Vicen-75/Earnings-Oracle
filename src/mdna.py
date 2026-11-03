@@ -61,11 +61,31 @@ def find_mdna_end(text, start):
 def extract_mdna_from_text(text):
     """The MD&A section as a string, or None if the boundaries cannot be found."""
     start = find_mdna_start(text)
-    if start is None:
+    if start is not None:
+        end = find_mdna_end(text, start)
+        if end is not None:
+            return text[start:end]
+    return extract_mdna_fallback(text)          # Nicolas's rule found nothing: try the closest-heading rule
+
+
+# --- Javier: fallback when the confirm phrase is missing (code written with help from Claude) ---
+# Preflight (Nov 3, 2026) found the MD&A in only 10 of 31 test candidates: most 10-Ks open Item 7 with "Overview" or
+# "Executive Summary", not "results of operations. The following". In PEP's FY2024 10-K the pattern matches 6 times:
+# the table of contents, cross-references in Items 1 and 7A/8, and the real heading (the 4th). Rule: for every Item 7
+# match, find where the section would end (first Item 7A / Item 8 heading at least MIN_SECTION_CHARS later). The real
+# end is shared by the TOC entry, the early cross-references and the real heading, so for each end we keep only the
+# CLOSEST heading before it, then take the longest of those sections.
+def extract_mdna_fallback(text):
+    """MD&A by the closest-heading rule, or None."""
+    best = {}                                                   # end position -> closest start before it
+    for match in re.finditer(START_PATTERN, text, re.IGNORECASE):
+        end = find_mdna_end(text, match.start())
+        if end is not None:
+            best[end] = max(best.get(end, -1), match.start())
+    sections = [(end - start, start, end) for end, start in best.items() if end - start >= MIN_SECTION_CHARS]
+    if not sections:
         return None
-    end = find_mdna_end(text, start)
-    if end is None:
-        return None
+    _, start, end = max(sections)
     return text[start:end]
 
 
