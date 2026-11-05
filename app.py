@@ -264,10 +264,12 @@ cols = st.columns(len(EXAMPLES))
 for col, (t, label) in zip(cols, EXAMPLES.items()):
     col.button(f"{t}: {label}", on_click=pick_example, args=(t,), width="stretch")
 
-ticker_col, button_col = st.columns([4, 1], vertical_alignment="bottom")
-ticker_col.text_input("Or type a ticker", key="ticker", placeholder="e.g. CAT")
-if button_col.button("Analyze", type="primary", width="stretch"):
-    st.session_state.run_now = True
+# A form, so pressing Enter in the box submits it like the Analyze button (a plain text box only saves the text).
+with st.form("ticker_form", border=False):
+    ticker_col, button_col = st.columns([4, 1], vertical_alignment="bottom")
+    ticker_col.text_input("Or type a ticker", key="ticker", placeholder="e.g. CAT")
+    if button_col.form_submit_button("Analyze", type="primary", width="stretch"):
+        st.session_state.run_now = True
 
 # --- Run --------------------------------------------------------------------------------------------------------
 if st.session_state.pop("run_now", False):
