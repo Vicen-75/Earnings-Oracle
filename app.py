@@ -291,70 +291,110 @@ def pick_example(t):
     st.session_state.run_now = True
 
 
-st.write("Try an example:")
-cols = st.columns(len(EXAMPLES))
-for col, (t, label) in zip(cols, EXAMPLES.items()):
-    col.button(f"{t}: {label}", on_click=pick_example, args=(t,), width="stretch")
+def how_it_works_tab():
+    """How a run flows through the code. Two renderings of the same model (src/flowchart.py) to compare (Nov 5)."""
+    from src import flowchart
+    st.markdown("#### How a run flows through the code")
+    style = st.radio("Diagram", ["Interactive graph (React Flow)", "Zoomable diagram (Mermaid)"], horizontal=True,
+                     label_visibility="collapsed")
+    st.markdown(flowchart.legend_html(), unsafe_allow_html=True)
+    if style.startswith("Interactive"):
+        try:
+            from streamlit_flow import streamlit_flow
+        except ImportError:
+            st.error("This view needs the streamlit-flow-component package: pip install streamlit-flow-component")
+        else:
+            st.caption("Drag boxes, scroll to zoom, use the minimap at the bottom right.")
+            if "flow_state_v2" not in st.session_state:
+                st.session_state.flow_state_v2 = flowchart.flow_state()
+            st.session_state.flow_state_v2 = streamlit_flow(
+                "how_it_works_v2", st.session_state.flow_state_v2, height=900, fit_view=True, show_controls=True,
+                show_minimap=True, allow_zoom=True, min_zoom=0.2, hide_watermark=True)
+    else:
+        page = flowchart.mermaid_html(height=860)
+        if hasattr(st, "iframe"):                  # newer Streamlit; st.components.v1.html is being retired
+            st.iframe(page, height=860)
+        else:
+            import streamlit.components.v1 as components
+            components.html(page, height=860)
+    st.markdown("#### What each file does")
+    st.table(pd.DataFrame(flowchart.LEGEND, columns=["File", "Responsibility"]).set_index("File"))
 
-# A form, so pressing Enter in the box submits it like the Analyze button (a plain text box only saves the text).
-with st.form("ticker_form", border=False):
-    ticker_col, button_col = st.columns([4, 1], vertical_alignment="bottom")
-    ticker_col.text_input("Or type a ticker", key="ticker", placeholder="e.g. CAT")
-    if button_col.form_submit_button("Analyze", type="primary", width="stretch"):
-        st.session_state.run_now = True
 
-# --- Run --------------------------------------------------------------------------------------------------------
-if st.session_state.pop("run_now", False):
-    ticker = (st.session_state.get("ticker") or "").upper().strip()
-    if not ticker:
-        st.warning("Please enter a ticker.")
-        st.stop()
+def analyze_tab():
+    st.write("Try an example:")
+    cols = st.columns(len(EXAMPLES))
+    for col, (t, label) in zip(cols, EXAMPLES.items()):
+        col.button(f"{t}: {label}", on_click=pick_example, args=(t,), width="stretch")
 
-    try:
-        with st.spinner("Checking the company on EDGAR..."):
-            company = load_company(ticker)
-    except Exception:
-        company = {"error": "EDGAR could not be reached right now. Please try again in a minute."}
-    if "error" in company:
-        st.error(company["error"])
-        st.stop()
+    # A form, so pressing Enter in the box submits it like the Analyze button (a plain text box only saves the text).
+    with st.form("ticker_form", border=False):
+        ticker_col, button_col = st.columns([4, 1], vertical_alignment="bottom")
+        ticker_col.text_input("Or type a ticker", key="ticker", placeholder="e.g. CAT")
+        if button_col.form_submit_button("Analyze", type="primary", width="stretch"):
+            st.session_state.run_now = True
 
-    st.header(company["name"])
-    hit = cached_analysis(ticker)
-    if hit:
-        show_cached_trace(hit[1])                  # same place and look as a live run: trace on top, open
-        show_result(ticker, company, hit[1], cached_at=hit[0])
-        st.stop()
-
-    if st.session_state.requests_used >= MAX_REQUESTS_PER_SESSION:
-        st.error("You have reached the limit of new analyses for this session. The examples above may still be cached.")
-        st.stop()
-    st.session_state.requests_used += 1
-
-    from src.agent import investigate, APP_LOG_PATH   # imported here so the page loads even if the model client fails
-
-    # The trace is written live into this box and stays here, open, as the record of the run (Nov 5: it used to be
-    # cleared and redrawn at the bottom of the page, which was disorienting).
-    with st.status("The model is investigating...", expanded=True) as status:
-        writer = TraceWriter()
-
-        def on_event(event):
-            if event["type"] == "wait":
-                st.caption(f"Model busy (free tier limit), waiting {event['seconds']} seconds...")
-            else:
-                writer.add(event)
+    # --- Run --------------------------------------------------------------------------------------------------------
+    if st.session_state.pop("run_now", False):
+        ticker = (st.session_state.get("ticker") or "").upper().strip()
+        if not ticker:
+            st.warning("Please enter a ticker.")
+            st.stop()
 
         try:
-            out = investigate(ticker, on_event=on_event, log_path=APP_LOG_PATH)    # local, git-ignored record
-        except Exception as error:
-            status.update(label="The analysis failed", state="error")
-            st.error(f"The model could not complete the analysis ({type(error).__name__}). "
-                     "Please try again in a minute.")
+            with st.spinner("Checking the company on EDGAR..."):
+                company = load_company(ticker)
+        except Exception:
+            company = {"error": "EDGAR could not be reached right now. Please try again in a minute."}
+        if "error" in company:
+            st.error(company["error"])
             st.stop()
-        writer.conclude(out, *parse_headline(out["answer"]))
-    status.update(label=trace_label(writer.n), state="complete", expanded=True)
 
-    analysis_store()[ticker] = (time.time(), out)
-    show_result(ticker, company, out)
+        st.header(company["name"])
+        hit = cached_analysis(ticker)
+        if hit:
+            show_cached_trace(hit[1])                  # same place and look as a live run: trace on top, open
+            show_result(ticker, company, hit[1], cached_at=hit[0])
+            st.stop()
 
-st.caption(f"New analyses used: {st.session_state.requests_used} / {MAX_REQUESTS_PER_SESSION}")
+        if st.session_state.requests_used >= MAX_REQUESTS_PER_SESSION:
+            st.error("You have reached the limit of new analyses for this session. The examples above may still be cached.")
+            st.stop()
+        st.session_state.requests_used += 1
+
+        from src.agent import investigate, APP_LOG_PATH   # imported here so the page loads even if the model client fails
+
+        # The trace is written live into this box and stays here, open, as the record of the run (Nov 5: it used to be
+        # cleared and redrawn at the bottom of the page, which was disorienting).
+        with st.status("The model is investigating...", expanded=True) as status:
+            writer = TraceWriter()
+
+            def on_event(event):
+                if event["type"] == "wait":
+                    st.caption(f"Model busy (free tier limit), waiting {event['seconds']} seconds...")
+                else:
+                    writer.add(event)
+
+            try:
+                out = investigate(ticker, on_event=on_event, log_path=APP_LOG_PATH)    # local, git-ignored record
+            except Exception as error:
+                status.update(label="The analysis failed", state="error")
+                st.error(f"The model could not complete the analysis ({type(error).__name__}). "
+                         "Please try again in a minute.")
+                st.stop()
+            writer.conclude(out, *parse_headline(out["answer"]))
+        status.update(label=trace_label(writer.n), state="complete", expanded=True)
+
+        analysis_store()[ticker] = (time.time(), out)
+        show_result(ticker, company, out)
+
+    st.caption(f"New analyses used: {st.session_state.requests_used} / {MAX_REQUESTS_PER_SESSION}")
+
+
+# --- Tabs (Nov 5) ----------------------------------------------------------------------------------------------
+# "How it works" is drawn first in the code because the analyze tab can call st.stop(), which ends the script.
+tab_analyze, tab_how = st.tabs(["Analyze", "How it works"])
+with tab_how:
+    how_it_works_tab()
+with tab_analyze:
+    analyze_tab()
