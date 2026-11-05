@@ -171,6 +171,8 @@ CAPEX_TAGS = ["PaymentsToAcquirePropertyPlantAndEquipment"]
 DEPRECIATION_TAGS = ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization", "Depreciation"]
 OPERATING_CASH_FLOW_TAGS = ["NetCashProvidedByUsedInOperatingActivities"]
 INTEREST_EXPENSE_TAGS = ["InterestExpense", "InterestExpenseNonoperating"]
+PRETAX_INCOME_TAGS = ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+                      "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"]
 
 MAX_RATIOS_PER_CALL = 10
 EXTREME_GROWTH = 0.5          # +/-50%: flag, do not hide
@@ -222,7 +224,8 @@ def compute_ratios(cik, ratios, last_year_end=None, skip_newest=SKIP_NEWEST):
     f = lambda tags, flow=True: _annual(facts, tags, flow)                  # noqa: E731
     revenue, op_income = f(REVENUE_TAGS), f(OPERATING_INCOME_TAGS)
     core = f(NET_INTEREST_INCOME_TAGS) or f(PREMIUMS_TAGS)
-    ends = _year_ends(revenue or op_income or core, last_year_end)
+    pretax = f(PRETAX_INCOME_TAGS)
+    ends = _year_ends(revenue or op_income or core or pretax, last_year_end)
     if len(ends) < 2:
         return {"error": "fewer than two full fiscal years of data before the cutoff"}
     ends = ends[:3]                                                          # 3 year ends give growth for 2 years
@@ -245,6 +248,8 @@ def compute_ratios(cik, ratios, last_year_end=None, skip_newest=SKIP_NEWEST):
         rev, oi = revenue.get(end), op_income.get(end)
         if name == "revenue_growth":                 return _growth(revenue, end, prev)
         if name == "operating_income_growth":        return _growth(op_income, end, prev)
+        if name == "pretax_income_growth":           return _growth(pretax, end, prev)
+        if name == "pretax_margin":                  return _margin(pretax.get(end), rev)
         if name == "deferred_revenue_growth":        return _growth(data["deferred"], end, prev)
         if name == "rpo_growth":                     return _growth(data["rpo"], end, prev)
         if name == "gross_margin":                   return _margin(gross.get(end), rev)

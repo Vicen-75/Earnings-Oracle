@@ -195,6 +195,7 @@ The model retrieves from this directory with the `get_industry_playbook` tool, t
 
 | Ratio | Why it matters here |
 |---|---|
+| `pretax_income_growth` | last year's direction of the target (banks report no operating income line) |
 | `core_income_growth` | net interest income trend |
 | `efficiency_ratio` | cost control |
 | `provision_to_core_income` | credit costs |
@@ -204,7 +205,7 @@ The model retrieves from this directory with the `get_industry_playbook` tool, t
 
 **MD&A topics.** net interest margin outlook, rate sensitivity, loan growth, credit quality and reserve builds, expense guidance
 
-**Caution.** If the company card says has_operating_income_tag is false, the target is not defined; say so instead of guessing.
+**Caution.** Banks usually report no operating income line. The company card names the target: when it says pre-tax income, predict the direction of pre-tax income, not operating income.
 
 ### Insurance (property and casualty, life, health) (`insurance`, SIC 6300-6411)
 
@@ -212,6 +213,7 @@ The model retrieves from this directory with the `get_industry_playbook` tool, t
 
 | Ratio | Why it matters here |
 |---|---|
+| `pretax_income_growth` | last year's direction of the target when no operating income line is reported |
 | `core_income_growth` | premiums earned trend |
 | `efficiency_ratio` | expense control |
 | `equity_to_assets` | capital cushion |
@@ -221,6 +223,8 @@ The model retrieves from this directory with the `get_industry_playbook` tool, t
 **Avoid.** inventory and capex ratios do not apply.
 
 **MD&A topics.** premium rate increases, loss or medical cost ratio trends, catastrophe losses, reserve development, membership (health), utilization trends
+
+**Caution.** Check the company card's target: health insurers usually report operating income, property and casualty and life insurers usually do not (then the target is pre-tax income).
 
 ### General (no specific playbook) (`general`, SIC fallback)
 
@@ -244,10 +248,12 @@ The model retrieves from this directory with the `get_industry_playbook` tool, t
 |---|---|---|---|---|
 | `revenue_growth` | Change in revenue versus the prior fiscal year. | (Revenue[t] - Revenue[t-1]) / |Revenue[t-1]| | Revenues, RevenueFromContractWithCustomerExcludingAssessedTax, SalesRevenueNet | Top-line momentum. Operating income rarely grows for long when revenue shrinks, unless costs are cut. |
 | `operating_income_growth` | Change in operating income versus the prior fiscal year. | (OperatingIncome[t] - OperatingIncome[t-1]) / |OperatingIncome[t-1]| | OperatingIncomeLoss | Last year's direction. Momentum is real but mean reversion after an unusual year is common. |
+| `pretax_income_growth` | Change in pre-tax income from continuing operations versus the prior fiscal year. | (PretaxIncome[t] - PretaxIncome[t-1]) / |PretaxIncome[t-1]| | IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest, IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments | Last year's direction of the substitute target, for companies that report no operating income line (banks, insurers, some consumer and energy companies). |
 | `deferred_revenue_growth` | Change in current deferred revenue (contract liabilities) versus the prior year end. | (DeferredRevenue[t] - DeferredRevenue[t-1]) / |DeferredRevenue[t-1]| | ContractWithCustomerLiabilityCurrent, DeferredRevenueCurrent | Cash billed but not yet recognized. For subscription businesses it leads next year's revenue. |
 | `rpo_growth` | Change in remaining performance obligations (RPO): revenue under signed contracts not yet recognized. | (RPO[t] - RPO[t-1]) / |RPO[t-1]| | RevenueRemainingPerformanceObligation | Contracted future revenue. RPO is NOT the same as the backlog management quotes: it often covers only firm, non-cancellable contracts and can be a fraction of total backlog, so a few large multi-year contracts can double it. Read it as direction, check the size against the backlog in the MD&A. |
 | `gross_margin` | Gross profit as a share of revenue. | GrossProfit / Revenue  (or (Revenue - CostOfRevenue) / Revenue) | GrossProfit; CostOfRevenue, CostOfGoodsAndServicesSold, CostOfGoodsSold | Pricing power and input costs. A falling gross margin flows straight into operating income. |
 | `operating_margin` | Operating income as a share of revenue. | OperatingIncome / Revenue | OperatingIncomeLoss; revenue tags | Overall operating efficiency. Compare the trend across the two years, not the level across industries. |
+| `pretax_margin` | Pre-tax income from continuing operations as a share of revenue. | PretaxIncome / Revenue | pre-tax income tags; revenue tags | Overall profitability for companies without an operating income line. Includes interest and other non-operating items, so read one-offs in the MD&A before trusting a big move. |
 | `sga_to_revenue` | Selling, general and administrative expense as a share of revenue. | SG&A / Revenue | SellingGeneralAndAdministrativeExpense | Overhead discipline. Rising SG&A share with flat revenue squeezes operating income. |
 | `rnd_to_revenue` | Research and development expense as a share of revenue. | R&D / Revenue | ResearchAndDevelopmentExpense, ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost | Investment intensity. A step up depresses this year's operating income; a pullback can lift it. |
 | `cost_ratio` | Total costs and expenses as a share of revenue. | CostsAndExpenses / Revenue | CostsAndExpenses, OperatingExpenses | The mirror of operating margin when a company does not report gross profit. |

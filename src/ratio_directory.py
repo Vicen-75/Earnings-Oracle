@@ -30,6 +30,15 @@ RATIOS = {
         "tags": "OperatingIncomeLoss",
         "read_it": "Last year's direction. Momentum is real but mean reversion after an unusual year is common.",
     },
+    "pretax_income_growth": {
+        "kind": "growth", "family": "growth",
+        "definition": "Change in pre-tax income from continuing operations versus the prior fiscal year.",
+        "formula": "(PretaxIncome[t] - PretaxIncome[t-1]) / |PretaxIncome[t-1]|",
+        "tags": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest, "
+                "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+        "read_it": "Last year's direction of the substitute target, for companies that report no operating income line "
+                   "(banks, insurers, some consumer and energy companies).",
+    },
     "deferred_revenue_growth": {
         "kind": "growth", "family": "growth",
         "definition": "Change in current deferred revenue (contract liabilities) versus the prior year end.",
@@ -60,6 +69,14 @@ RATIOS = {
         "formula": "OperatingIncome / Revenue",
         "tags": "OperatingIncomeLoss; revenue tags",
         "read_it": "Overall operating efficiency. Compare the trend across the two years, not the level across industries.",
+    },
+    "pretax_margin": {
+        "kind": "margin", "family": "profitability",
+        "definition": "Pre-tax income from continuing operations as a share of revenue.",
+        "formula": "PretaxIncome / Revenue",
+        "tags": "pre-tax income tags; revenue tags",
+        "read_it": "Overall profitability for companies without an operating income line. Includes interest and other "
+                   "non-operating items, so read one-offs in the MD&A before trusting a big move.",
     },
     "sga_to_revenue": {
         "kind": "margin", "family": "profitability",
@@ -364,6 +381,7 @@ INDUSTRY_GROUPS = {
         "drivers": "Net interest income (loan growth and interest rates), credit losses and cost control. "
                    "Banks usually do not report an operating income line.",
         "key_ratios": {
+            "pretax_income_growth": "last year's direction of the target (banks report no operating income line)",
             "core_income_growth": "net interest income trend",
             "efficiency_ratio": "cost control",
             "provision_to_core_income": "credit costs",
@@ -372,8 +390,8 @@ INDUSTRY_GROUPS = {
         "avoid": "general ratios (gross margin, inventory, capex) do not apply.",
         "mdna_topics": "net interest margin outlook, rate sensitivity, loan growth, credit quality and reserve builds, "
                        "expense guidance",
-        "caution": "If the company card says has_operating_income_tag is false, the target is not defined; "
-                   "say so instead of guessing.",
+        "caution": "Banks usually report no operating income line. The company card names the target: when it says "
+                   "pre-tax income, predict the direction of pre-tax income, not operating income.",
     },
     "insurance": {
         "label": "Insurance (property and casualty, life, health)",
@@ -381,6 +399,7 @@ INDUSTRY_GROUPS = {
         "drivers": "Premium growth, claims (loss ratio, catastrophes, medical costs) and investment income. "
                    "Health insurers often do report operating income; most others do not.",
         "key_ratios": {
+            "pretax_income_growth": "last year's direction of the target when no operating income line is reported",
             "core_income_growth": "premiums earned trend",
             "efficiency_ratio": "expense control",
             "equity_to_assets": "capital cushion",
@@ -390,6 +409,8 @@ INDUSTRY_GROUPS = {
         "avoid": "inventory and capex ratios do not apply.",
         "mdna_topics": "premium rate increases, loss or medical cost ratio trends, catastrophe losses, reserve development, "
                        "membership (health), utilization trends",
+        "caution": "Check the company card's target: health insurers usually report operating income, property and "
+                   "casualty and life insurers usually do not (then the target is pre-tax income).",
     },
     "general": {
         "label": "General (no specific playbook)",
@@ -443,6 +464,8 @@ def get_industry_playbook(sic_code=None, group=None):
         "ratios_to_avoid": g["avoid"],
         "mdna_topics": g["mdna_topics"],
         "caution": g.get("caution", ""),
+        "if_target_is_pretax_income": "When the company card says the target is pre-tax income, use pretax_income_growth "
+                                      "and pretax_margin in place of operating_income_growth and operating_margin.",
         "all_ratio_names": list(RATIOS),
         "available_groups": {k: v["label"] for k, v in INDUSTRY_GROUPS.items()},
     }

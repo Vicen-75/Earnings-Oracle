@@ -43,36 +43,93 @@ def ticker_to_cik(ticker):
     return None, None        # failure path: ticker not found
 
 
+def _ten_ks_in(block, cik):
+    """10-K filings listed in one block of the submissions API (same column layout in 'recent' and older pages)."""
+    found = []
+    for form, filed, period, acc, doc in zip(block["form"], block["filingDate"], block["reportDate"],
+                                             block["accessionNumber"], block["primaryDocument"]):
+        if form == "10-K":
+            link = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc.replace('-', '')}/{doc}"
+            found.append({"fiscal_year_end": period, "filed": filed, "url": link})
+    return found
+
+
 def list_10ks(cik, how_many=3):
     """Return the most recent 10-K filings of a company, newest first.
     An empty list means the company does not file 10-Ks (e.g. foreign filers use 20-F)."""
-    url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-    recent = _get_json(url)["filings"]["recent"]
-    filings = []
-    for form, filed, period, acc, doc in zip(recent["form"], recent["filingDate"],
-                                             recent["reportDate"], recent["accessionNumber"],
-                                             recent["primaryDocument"]):
-        if form == "10-K":
-            link = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc.replace('-', '')}/{doc}"
-            filings.append({"fiscal_year_end": period, "filed": filed, "url": link})
+    data = _get_json(f"https://data.sec.gov/submissions/CIK{cik}.json")
+    filings = _ten_ks_in(data["filings"]["recent"], cik)
+    # --- Javier: older pages (code written with help from Claude) ---
+    # 'recent' holds only the last 1,000 filings. Big issuers (JPM files thousands of prospectuses a year) push
+    # their older 10-Ks off that list, into extra pages listed under filings.files. Read those until we have enough.
+    for page in data["filings"].get("files", []):
+        if len(filings) >= how_many:
+            break
+        older = _get_json(f"https://data.sec.gov/submissions/{page['name']}")
+        if older:
+            filings += _ten_ks_in(older, cik)
     return filings[:how_many]
 
 
-def annual_operating_income(cik):
-    """Return {fiscal_year_end: operating income in USD}, one value per full fiscal year, newest first.
-    None means the company does not report this tag (e.g. banks)."""
-    url = f"https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/us-gaap/OperatingIncomeLoss.json"
+def _annual_concept(cik, tag):
+    """{fiscal_year_end: USD value} for full fiscal years of one XBRL tag, newest first. None if not reported."""
+    url = f"https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/us-gaap/{tag}.json"
     data = _get_json(url)
     if data is None:
         return None
     annual = {}
-    for row in data["units"]["USD"]:
+    for row in data.get("units", {}).get("USD", []):
         if row.get("form") != "10-K" or "start" not in row:
             continue
         days = (date.fromisoformat(row["end"]) - date.fromisoformat(row["start"])).days
         if 350 <= days <= 380:          # keep full years only, drop quarters
             annual[row["end"]] = row["val"]
     return dict(sorted(annual.items(), reverse=True))
+
+
+def annual_operating_income(cik):
+    """Return {fiscal_year_end: operating income in USD}, one value per full fiscal year, newest first.
+    None means the company does not report this tag (e.g. banks)."""
+    return _annual_concept(cik, "OperatingIncomeLoss")
+
+
+# --- Javier: substitute target for companies without an operating income line (code written with help from Claude) ---
+# Banks, insurers and some others (KO, XOM, PFE, NKE in our candidates) do not tag OperatingIncomeLoss. Team decision
+# (Nov 4, 2026): for them the target is pre-tax income from continuing operations, the closest line they all report.
+PRETAX_INCOME_TAGS = [
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+]
+TARGETS = {"operating_income": "operating income", "pretax_income": "pre-tax income"}
+
+
+def annual_pretax_income(cik):
+    """{fiscal_year_end: pre-tax income in USD}, newest first, from the first tag that has values. None if neither."""
+    for tag in PRETAX_INCOME_TAGS:
+        values = _annual_concept(cik, tag)
+        if values:
+            return values
+    return None
+
+
+def _covers(series, year_end):
+    """True if the series has a value for this fiscal year end (within 10 days, XBRL and filing dates can differ)."""
+    if not series or not year_end:
+        return False
+    target = date.fromisoformat(year_end)
+    return any(abs((date.fromisoformat(end) - target).days) <= 10 for end in series)
+
+
+def choose_target(cik, latest_year_end):
+    """Which number we predict for this company: 'operating_income' if it reports it for its latest fiscal year,
+    otherwise 'pretax_income', otherwise None (nothing to predict). Returns (target, series)."""
+    income = annual_operating_income(cik)
+    if _covers(income, latest_year_end):
+        return "operating_income", income
+    pretax = annual_pretax_income(cik)
+    if _covers(pretax, latest_year_end):
+        return "pretax_income", pretax
+    return None, {}
 
 
 # --- Javier: company card for tool calling (code written with help from Claude) ---
@@ -86,9 +143,9 @@ def company_card(ticker):
     submissions = _get_json(f"https://data.sec.gov/submissions/CIK{cik}.json")
     skip = int(os.environ.get("EARNINGS_ORACLE_SKIP_NEWEST", "0"))   # backtest: hide the year being predicted
     filings = list_10ks(cik, how_many=3 + skip)[skip:]
-    income = annual_operating_income(cik)
-    if income and skip and filings:
-        income = {end: v for end, v in income.items() if end <= filings[0]["fiscal_year_end"]}
+    latest = filings[0]["fiscal_year_end"] if filings else None
+    target, series = choose_target(cik, latest) if filings else (None, {})
+    years = [end for end in series if not latest or end <= latest][:3]
     return {
         "ticker": ticker.upper().strip(),
         "name": name,
@@ -97,8 +154,9 @@ def company_card(ticker):
         "sic_description": submissions.get("sicDescription"),
         "fiscal_year_end_mmdd": submissions.get("fiscalYearEnd"),
         "ten_k_filings": filings,                                   # [] means the company files 20-F or similar
-        "has_operating_income_tag": income is not None,             # False for most banks and insurers
-        "operating_income_years_available": list(income.keys())[:3] if income else [],
+        "has_operating_income_tag": target == "operating_income",   # False for most banks and insurers
+        "target": TARGETS.get(target, "none: no operating income or pre-tax income reported"),
+        "target_years_available": years,
     }
 
 
