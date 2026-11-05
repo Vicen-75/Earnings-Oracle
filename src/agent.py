@@ -1,6 +1,6 @@
 # --- Javier: tool-calling agent loop (code written with help from Claude) ---
-# Design: docs/tool_calling.md. The model, not the code, decides which ratio set to compute and what to search
-# in the MD&A. The code resolves the ticker, exposes the tools, executes whatever the model asks for, and logs it.
+# Design: docs/tool_calling.md and docs/ratio_directory.md. The model, not the code, decides which industry playbook to
+# read, which ratios to compute and whether to read the MD&A. The code resolves the ticker, exposes the tools, executes whatever the model asks for, and logs it.
 #
 # Run from the repository root:
 #   python -m src.agent CAT            # one ticker, prints the tool log and the answer
@@ -15,7 +15,8 @@ from google.genai import types
 
 from src import edgar
 from src.llm import client, MODEL
-from src.prompts import TOOL_SYSTEM_V2
+from src.prompts import TOOL_SYSTEM_V3
+from src import ratio_directory
 
 from src import mdna as mdna_impl                      # real MD&A extractor (Nicolas)
 try:
@@ -37,41 +38,46 @@ MAX_TOOL_CALLS = 6          # hard stop so one ticker cannot burn the free tier
 LOG_PATH = Path("eval/tool_log.jsonl")
 
 # --- 1. What the model is allowed to call -------------------------------------------------------------------
+# ReAct: every tool takes a required "reason" argument, the model's thought before it acts ("the card says SIC 7372,
+# software, so I want the software playbook"). The loop removes it before running the tool and logs it, so the log
+# reads thought -> action -> observation, step by step.
 S = types.Schema
+REASON = S(type="STRING", description="One sentence: why you are calling this tool now and what you expect to learn.")
+
+
+def _declare(name, description, properties, required):
+    return types.FunctionDeclaration(
+        name=name, description=description,
+        parameters=S(type="OBJECT", properties={"reason": REASON, **properties}, required=["reason", *required]),
+    )
+
+
 TOOLS = types.Tool(function_declarations=[
-    types.FunctionDeclaration(
-        name="get_company_card",
-        description="Company identity, industry (SIC code and description), fiscal year end, which 10-K filings exist, "
-                    "and whether it reports an operating income line. Call this first.",
-        parameters=S(type="OBJECT", properties={"ticker": S(type="STRING")}, required=["ticker"]),
-    ),
-    types.FunctionDeclaration(
-        name="compute_general_ratios",
-        description="Operating margin, revenue growth, opex ratio, asset turnover and leverage for the last two fiscal years. "
-                    "For non-financial companies.",
-        parameters=S(type="OBJECT", properties={"cik": S(type="STRING")}, required=["cik"]),
-    ),
-    types.FunctionDeclaration(
-        name="compute_financial_sector_ratios",
-        description="Net interest income or premium growth, efficiency ratio, provision ratio, net interest margin and "
-                    "equity to assets for the last two fiscal years. For banks and insurers.",
-        parameters=S(type="OBJECT", properties={"cik": S(type="STRING")}, required=["cik"]),
-    ),
-    types.FunctionDeclaration(
-        name="get_mdna",
-        description="The full text of Management's Discussion and Analysis (Item 7) from the last two 10-Ks. "
-                    "Read it for management's outlook, demand, pricing, margins, costs and risks. "
-                    "Returns an error if the section cannot be found.",
-        parameters=S(type="OBJECT", properties={"cik": S(type="STRING")}, required=["cik"]),
-    ),
+    _declare("get_company_card",
+             "Company identity, industry (SIC code and description), fiscal year end, which 10-K filings exist, "
+             "and whether it reports an operating income line. Call this first.",
+             {"ticker": S(type="STRING")}, ["ticker"]),
+    _declare("get_industry_playbook",
+             "Retrieve the ratio directory entry for an industry: what drives operating income there, which ratios to "
+             "compute and why (with definitions), which to avoid, and what to look for in the MD&A. Pass the SIC code "
+             "from the company card, or a group name if the SIC code does not fit the business (a conglomerate, or a "
+             "second segment). The answer lists every group and every ratio name.",
+             {"sic_code": S(type="INTEGER"), "group": S(type="STRING")}, []),
+    _declare("compute_ratios",
+             "Compute the ratios you choose (up to 10, by name from the ratio directory) for the company's two latest "
+             "fiscal years, from its XBRL data on EDGAR. Values are numbers or 'not reported'.",
+             {"cik": S(type="STRING"), "ratios": S(type="ARRAY", items=S(type="STRING"))}, ["cik", "ratios"]),
+    _declare("get_mdna",
+             "The full text of Management's Discussion and Analysis (Item 7) from the last two 10-Ks. "
+             "Read it for the topics the playbook names: outlook, demand, pricing, margins, costs and risks. "
+             "Returns an error if the section cannot be found.",
+             {"cik": S(type="STRING")}, ["cik"]),
 ])
 
 IMPL = {
     "get_company_card": edgar.company_card,
-    "compute_general_ratios": ratio_impl.compute_general_ratios if RATIOS_AVAILABLE
-                              else _under_construction("compute_general_ratios"),
-    "compute_financial_sector_ratios": ratio_impl.compute_financial_sector_ratios if RATIOS_AVAILABLE
-                                       else _under_construction("compute_financial_sector_ratios"),
+    "get_industry_playbook": ratio_directory.get_industry_playbook,
+    "compute_ratios": ratio_impl.compute_ratios if RATIOS_AVAILABLE else _under_construction("compute_ratios"),
     "get_mdna": mdna_impl.get_mdna,
 }
 
@@ -91,7 +97,7 @@ def _generate(contents, config):
     raise RuntimeError("gave up after repeated retries")
 
 
-def run(ticker, anonymize=False, system_instruction=TOOL_SYSTEM_V2, verbose=True):
+def run(ticker, anonymize=False, system_instruction=TOOL_SYSTEM_V3, verbose=True):
     """Let the model investigate one ticker with the tools. Returns (answer_text, log).
     log is a list of {"tool", "args", "ok"} in the order the model called them: that list is the evidence
     that tool calling is the model's decision (compare the log for an industrial vs a bank)."""
@@ -117,7 +123,8 @@ def run(ticker, anonymize=False, system_instruction=TOOL_SYSTEM_V2, verbose=True
             if verbose:
                 print(f"\n=== {ticker}: {len(log)} tool calls, {usage['model_calls']} model calls ===")
                 for entry in log:
-                    print(f"   {entry['tool']}({entry['args']}) -> {'ok' if entry['ok'] else 'error'}")
+                    print(f"   thought: {entry['reason']}")
+                    print(f"   action:  {entry['tool']}({entry['args']}) -> {'ok' if entry['ok'] else 'error'}")
                 print(answer)
             return answer, log
 
@@ -130,13 +137,15 @@ def run(ticker, anonymize=False, system_instruction=TOOL_SYSTEM_V2, verbose=True
                 _write_log(ticker, log, answer, usage, anonymize)
                 return answer, log
             args = dict(call.args or {})
+            reason = args.pop("reason", "")
             try:
                 result = IMPL[call.name](**args)
             except Exception as error:                                # a crashing tool must not crash the run
                 result = {"error": f"{type(error).__name__}: {error}"}
             if anonymize:
                 result = _anonymize(result)                           # placeholder until src/anonymize.py exists
-            log.append({"tool": call.name, "args": args, "ok": not (isinstance(result, dict) and "error" in result)})
+            log.append({"reason": reason, "tool": call.name, "args": args,
+                        "ok": not (isinstance(result, dict) and "error" in result)})
             response_parts.append(types.Part.from_function_response(name=call.name, response={"result": result}))
         contents.append(types.Content(role="user", parts=response_parts))
 
@@ -156,5 +165,5 @@ def _write_log(ticker, log, answer, usage, anonymize):
 
 
 if __name__ == "__main__":
-    for t in sys.argv[1:] or ["CAT", "JPM"]:
+    for t in sys.argv[1:] or ["CAT", "ADBE"]:
         run(t)
