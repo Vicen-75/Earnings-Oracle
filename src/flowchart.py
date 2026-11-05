@@ -106,6 +106,8 @@ LEGEND = [
     ("src/ratios.py", "Computes the ratios the model picks from XBRL data; flags growth beyond +/-50%."),
     ("src/mdna.py", "MD&A parser: headings vs contents vs cross-references, and validate_section()."),
     ("src/locate_mdna.py", "Locator agent: finds the MD&A through the filing's table of contents when the parser fails."),
+    ("src/baseline.py", "The two baselines the model must beat: momentum (last year's direction) and always increase."),
+    ("src/backtest.py", "Tests tab: loads eval/test_set.csv, runs one test with FY2025 hidden, scores it."),
     ("src/flowchart.py", "This tab: the flow model, drawn as a Mermaid diagram or a React Flow graph."),
 ]
 

@@ -291,6 +291,7 @@ def pick_example(t):
     st.session_state.run_now = True
 
 
+@st.fragment          # its React Flow component reports back to Python; a fragment keeps that from restarting the page
 def how_it_works_tab():
     """How a run flows through the code. Two renderings of the same model (src/flowchart.py) to compare (Nov 5)."""
     from src import flowchart
@@ -319,6 +320,192 @@ def how_it_works_tab():
             components.html(page, height=860)
     st.markdown("#### What each file does")
     st.table(pd.DataFrame(flowchart.LEGEND, columns=["File", "Responsibility"]).set_index("File"))
+
+
+# --- Tests tab (Nov 5): the 20-company backtest ----------------------------------------------------------------
+@st.cache_resource
+def tests_store():
+    """Shared across visitors while the app runs: {ticker: result of src.backtest.run_test}. Lost on restart."""
+    return {}
+
+
+@st.cache_data(ttl=24 * 3600, show_spinner="Computing the baselines from EDGAR (first time only)...")
+def all_baselines(rows_key):
+    from src.backtest import baselines, load_test_set
+    return {row["ticker"]: baselines(row) for row in load_test_set()}
+
+
+def team_passcode():
+    try:
+        return st.secrets.get("TEAM_PASSCODE")
+    except Exception:                               # no secrets file at all
+        return None
+
+
+def tests_tab():
+    from src.backtest import load_test_set
+    st.markdown("#### Backtest: 20 companies, FY2025 operating income")
+    st.caption("Each test hides the FY2025 10-K from every tool: the model reads the FY2023 and FY2024 filings and "
+               "predicts whether FY2025 operating income rose or fell. The truth comes from the FY2025 10-K. "
+               "The list (eval/test_set.csv) was fixed before any test was run.")
+    try:
+        rows = load_test_set()
+    except FileNotFoundError:
+        st.error("eval/test_set.csv not found.")
+        return
+    store = tests_store()
+    try:
+        base = all_baselines(tuple(r["ticker"] for r in rows))
+    except Exception:
+        st.warning("EDGAR could not be reached, so the baselines are missing. Reload in a minute.")
+        base = {r["ticker"]: {"momentum": {"direction": None}} for r in rows}
+
+    # Scoreboard and table live in placeholders, so a running batch can redraw them after each company (Nov 5).
+    board = st.empty()
+    table_box = st.empty()
+    draw_results(board, table_box, rows, store, base)
+
+    # Controls
+    st.markdown("#### Run tests")
+    secret = team_passcode()
+    left, right = st.columns([2, 3])
+    with left:
+        code = st.text_input("Team passcode", type="password", key="tests_passcode",
+                             help="Running tests spends the shared Gemini free tier.")
+        st.toggle("Anonymized (company names hidden)", value=False, disabled=True,
+                  help="Not available yet: the anonymizer (src/anonymize.py) is not built. Tests run with names.")
+    unlocked = bool(secret) and code == secret
+    if not secret:
+        left.caption("No TEAM_PASSCODE in the app's secrets: tests cannot be run here.")
+    elif code and not unlocked:
+        left.caption(":red[Wrong passcode.]")
+    with right:
+        labels = {r["ticker"]: f"{r['ticker']} · {r['name'].title()} ({r['industry']})" for r in rows}
+        ALL = "__all__"
+        pick = st.selectbox("Company", [ALL] + list(labels), key="tests_pick",
+                            format_func=lambda t: f"All {len(rows)} companies" if t == ALL else labels[t])
+        label = f"Run all {len(rows)} tests" if pick == ALL else f"Run the {pick} test"
+        run = st.button(label, type="primary", disabled=not unlocked, width="stretch")
+        rerun = st.checkbox("Re-run tests that already have a result", value=False)
+
+    queue = []
+    if run and pick == ALL:
+        queue = [r for r in rows if rerun or r["ticker"] not in store]
+        if not queue:
+            st.info(f"All {len(rows)} already have a result. Tick 're-run' to run them again.")
+    elif run:
+        queue = [r for r in rows if r["ticker"] == pick]
+    if queue:
+        run_queue(queue, lambda running: draw_results(board, table_box, rows, store, base, running))
+        st.rerun()
+
+    # Trace of a finished test
+    finished = [r["ticker"] for r in rows if r["ticker"] in store]
+    if finished:
+        st.markdown("#### Look at a finished test")
+        show = st.selectbox("Finished test", finished, key="tests_show",
+                            format_func=lambda t: f"{t} · {next(r['name'].title() for r in rows if r['ticker'] == t)}")
+        res = store[show]
+        truth = next(r["truth"] for r in rows if r["ticker"] == show)
+        st.markdown(f"Model: **{res['direction'] or 'no answer'}**"
+                    + (f" (probability {res['probability']:.2f})" if res["probability"] is not None else "")
+                    + f" · truth: **{truth}** · {verdict_badge(res['correct'])} · {res['seconds']} s")
+        show_cached_trace(res["out"])
+        with st.expander("The model's full answer", expanded=False):
+            st.markdown(res["out"]["answer"])
+
+
+GREEN_BG, GREEN_FG, RED_BG, RED_FG, AMBER_BG = "#E3F4E8", "#1E7A3C", "#FBE4E4", "#A12A2A", "#FFF4CC"
+
+
+def verdict_badge(correct):
+    """Coloured verdict for markdown: status labels, the finished-test line."""
+    return ":green[**✔ correct**]" if correct else ":red[**✘ wrong**]"
+
+
+def draw_results(board, table_box, rows, store, base, running=None):
+    """Scoreboard and results table. running = ticker being tested right now (its row is highlighted)."""
+    from src.backtest import is_correct
+    done = [r for r in rows if r["ticker"] in store]
+    n = len(done)
+    model_ok = sum(store[r["ticker"]]["correct"] for r in done)
+    mom_ok = sum(is_correct(base[r["ticker"]]["momentum"]["direction"], r["truth"]) for r in done)
+    inc_ok = sum(is_correct("increase", r["truth"]) for r in done)
+    mom_all = sum(is_correct(base[r["ticker"]]["momentum"]["direction"], r["truth"]) for r in rows)
+    inc_all = sum(is_correct("increase", r["truth"]) for r in rows)
+    with board.container():
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Model", f"{model_ok} of {n}" if n else "not run yet", help="Correct directions among the tests run")
+        c2.metric("Momentum baseline", f"{mom_ok} of {n}" if n else "-", help="On the same companies as the model")
+        c3.metric("Always increase", f"{inc_ok} of {n}" if n else "-", help="On the same companies as the model")
+        st.caption(f"On all {len(rows)} companies: momentum {mom_all} of {len(rows)}, always increase {inc_all} of "
+                   f"{len(rows)}. With 20 companies, one company is 5 points: a one-company difference is not "
+                   "evidence.")
+
+    mark = lambda ok: "✔" if ok else "✘"                       # noqa: E731
+    table = []
+    for r in rows:
+        t = r["ticker"]
+        res = store.get(t)
+        mom = base[t]["momentum"]["direction"]
+        model = "⏳ running…" if t == running else ((res["direction"] or "no answer") if res else "")
+        table.append({
+            "Ticker": t, "Company": r["name"].title(), "Industry": r["industry"],
+            "Truth": "▲ increase" if r["truth"] == "increase" else "▼ decrease",
+            "Model": model,
+            "Probability": f"{res['probability']:.2f}" if res and res["probability"] is not None and t != running else "",
+            "Model ✔": mark(res["correct"]) if res and t != running else "",
+            "Momentum": mom or "n/a", "Momentum ✔": mark(is_correct(mom, r["truth"])),
+            "Always ▲ ✔": mark(r["truth"] == "increase"),
+        })
+    df = pd.DataFrame(table)
+
+    def verdict_style(value):
+        if value == "✔":
+            return f"background-color: {GREEN_BG}; color: {GREEN_FG}; font-weight: 600; text-align: center"
+        if value == "✘":
+            return f"background-color: {RED_BG}; color: {RED_FG}; font-weight: 600; text-align: center"
+        return ""
+
+    def running_style(row):
+        return [f"background-color: {AMBER_BG}" if row["Ticker"] == running else "" for _ in row]
+
+    styled = (df.style.apply(running_style, axis=1)
+              .map(verdict_style, subset=["Model ✔", "Momentum ✔", "Always ▲ ✔"]))
+    table_box.dataframe(styled, hide_index=True, width="stretch", height=38 + 35 * len(df))
+
+
+def run_queue(queue, redraw=None):
+    """Run the queued tests one by one. Each result is stored as soon as it finishes, so a stall or an interruption
+    only loses the test in progress. Clicking other buttons while this runs restarts the page and stops the queue."""
+    from src.agent import APP_LOG_PATH, investigate
+    from src.backtest import run_test
+    store = tests_store()
+    st.warning("Tests are running. Keep this tab open and avoid clicking other controls until they finish.")
+    progress = st.progress(0.0, text=f"0 of {len(queue)} done")
+    for i, row in enumerate(queue):
+        if redraw:
+            redraw(row["ticker"])                   # highlight the company being tested
+        with st.status(f"{row['ticker']}: the model is investigating (FY2025 hidden)...", expanded=True) as status:
+            writer = TraceWriter()
+
+            def on_event(event):
+                if event["type"] == "wait":
+                    st.caption(f"Model busy (free tier limit), waiting {event['seconds']} seconds...")
+                else:
+                    _ = writer.add(event)
+            try:
+                res = run_test(row, investigate, parse_headline, on_event=on_event, log_path=APP_LOG_PATH)
+                store[row["ticker"]] = res
+                status.update(label=f"**{row['ticker']}**: model {res['direction'] or 'no answer'}, truth "
+                                    f"{row['truth']} · {verdict_badge(res['correct'])}",
+                              state="complete", expanded=False)
+            except Exception as error:
+                status.update(label=f"**{row['ticker']}**: :orange[failed ({type(error).__name__}); try it again later]",
+                              state="error", expanded=False)
+        progress.progress((i + 1) / len(queue), text=f"{i + 1} of {len(queue)} done")
+        if redraw:
+            redraw(None)                            # the finished row fills in right away
 
 
 def analyze_tab():
@@ -373,7 +560,7 @@ def analyze_tab():
                 if event["type"] == "wait":
                     st.caption(f"Model busy (free tier limit), waiting {event['seconds']} seconds...")
                 else:
-                    writer.add(event)
+                    _ = writer.add(event)
 
             try:
                 out = investigate(ticker, on_event=on_event, log_path=APP_LOG_PATH)    # local, git-ignored record
@@ -392,9 +579,11 @@ def analyze_tab():
 
 
 # --- Tabs (Nov 5) ----------------------------------------------------------------------------------------------
-# "How it works" is drawn first in the code because the analyze tab can call st.stop(), which ends the script.
-tab_analyze, tab_how = st.tabs(["Analyze", "How it works"])
+# The other tabs are drawn first in the code because the analyze tab can call st.stop(), which ends the script.
+tab_analyze, tab_tests, tab_how = st.tabs(["Analyze", "Tests", "How it works"])
 with tab_how:
     how_it_works_tab()
+with tab_tests:
+    tests_tab()
 with tab_analyze:
     analyze_tab()

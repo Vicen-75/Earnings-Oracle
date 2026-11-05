@@ -183,7 +183,22 @@ def _draft_summary(text):
     return "Draft answer: " + " | ".join(lines)[:200] + ". Asked to run the self-check before finalizing."
 
 
-def investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, write_log=True, log_path=None):
+def _tools_for_run(skip_newest):
+    """The tool implementations for one run. skip_newest=1 is backtest mode: every tool hides the newest 10-K, so the
+    model predicts the latest reported year from the two before it. None keeps each module's default (live mode).
+    Nov 5: passed per run so the app's Tests tab never changes what the Analyze tab sees."""
+    if skip_newest is None:
+        return IMPL
+    hide = {"skip_newest": skip_newest}
+    return {**IMPL,
+            "get_company_card": lambda **a: edgar.company_card(**a, **hide),
+            "compute_ratios": lambda **a: ratio_impl.compute_ratios(**a, **hide),
+            "get_mdna": lambda **a: mdna_impl.get_mdna(**a, **hide),
+            "locate_mdna": lambda **a: locate_mdna(**a, **hide)}
+
+
+def investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, write_log=True, log_path=None,
+                skip_newest=None):
     """Let the model investigate one ticker with the tools.
     Returns {"answer", "steps", "results", "usage"}:
       steps    [{"reason", "tool", "args", "ok"}] in the order the model called them (the ReAct trace; the evidence
@@ -200,11 +215,12 @@ def investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, w
     )
     contents = [types.Content(role="user", parts=[types.Part(text=f"Ticker: {ticker}")])]
     log, results, calls, draft = [], {}, 0, None
+    tools = _tools_for_run(skip_newest)
     usage = {"prompt_tokens": 0, "output_tokens": 0, "model_calls": 0}
 
     def finish(answer):
         if write_log:
-            _write_log(ticker, log, answer, usage, anonymize, prompt, log_path or LOG_PATH)
+            _write_log(ticker, log, answer, usage, anonymize, prompt, log_path or LOG_PATH, skip_newest)
         return {"answer": answer, "steps": log, "results": results, "usage": usage, "prompt": prompt}
 
     while True:
@@ -240,7 +256,7 @@ def investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, w
             args = dict(call.args or {})
             reason = args.pop("reason", "")
             try:
-                result = IMPL[call.name](**args)
+                result = tools[call.name](**args)
             except Exception as error:                                # a crashing tool must not crash the run
                 result = {"error": f"{type(error).__name__}: {error}"}
             if anonymize:
@@ -292,10 +308,11 @@ def _anonymize(result):
     return result
 
 
-def _write_log(ticker, log, answer, usage, anonymize, prompt, path=LOG_PATH):
+def _write_log(ticker, log, answer, usage, anonymize, prompt, path=LOG_PATH, skip_newest=None):
     path.parent.mkdir(exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps({"ticker": ticker, "prompt": prompt, "thinking": THINKING_LEVEL, "anonymized": anonymize,
+                            "backtest_skip_newest": skip_newest,
                             "ratios_available": RATIOS_AVAILABLE, "tools": log,
                             "usage": usage, "answer": answer, "ts": time.strftime("%Y-%m-%d %H:%M:%S")}) + "\n")
 

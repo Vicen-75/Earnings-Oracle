@@ -134,14 +134,15 @@ def choose_target(cik, latest_year_end):
 
 # --- Javier: company card for tool calling (code written with help from Claude) ---
 
-def company_card(ticker):
+def company_card(ticker, skip_newest=None):
     """Everything the model needs to decide what to fetch next, in one small dict.
     Returns {"error": ...} on failure so the model can read why (tool calling needs a handled path)."""
     cik, name = ticker_to_cik(ticker)
     if cik is None:
         return {"error": f"ticker '{ticker}' not found on EDGAR"}
     submissions = _get_json(f"https://data.sec.gov/submissions/CIK{cik}.json")
-    skip = int(os.environ.get("EARNINGS_ORACLE_SKIP_NEWEST", "0"))   # backtest: hide the year being predicted
+    # backtest: hide the year being predicted (per run from src/agent.py, else the environment switch)
+    skip = skip_newest if skip_newest is not None else int(os.environ.get("EARNINGS_ORACLE_SKIP_NEWEST", "0"))
     filings = list_10ks(cik, how_many=3 + skip)[skip:]
     latest = filings[0]["fiscal_year_end"] if filings else None
     target, series = choose_target(cik, latest) if filings else (None, {})
