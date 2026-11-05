@@ -82,14 +82,15 @@ RATIOS = {
         "kind": "margin", "family": "profitability",
         "definition": "Selling, general and administrative expense as a share of revenue.",
         "formula": "SG&A / Revenue",
-        "tags": "SellingGeneralAndAdministrativeExpense",
+        "tags": "SellingGeneralAndAdministrativeExpense; or SellingAndMarketingExpense + GeneralAndAdministrativeExpense",
         "read_it": "Overhead discipline. Rising SG&A share with flat revenue squeezes operating income.",
     },
     "rnd_to_revenue": {
         "kind": "margin", "family": "profitability",
         "definition": "Research and development expense as a share of revenue.",
         "formula": "R&D / Revenue",
-        "tags": "ResearchAndDevelopmentExpense, ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost",
+        "tags": "ResearchAndDevelopmentExpense, ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost, "
+                "ResearchAndDevelopmentExpenseSoftwareExcludingAcquiredInProcessCost",
         "read_it": "Investment intensity. A step up depresses this year's operating income; a pullback can lift it.",
     },
     "cost_ratio": {

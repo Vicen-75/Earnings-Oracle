@@ -162,7 +162,10 @@ def compute_financial_sector_ratios(cik, last_year_end=None):
 GROSS_PROFIT_TAGS = ["GrossProfit"]
 COST_OF_REVENUE_TAGS = ["CostOfRevenue", "CostOfGoodsAndServicesSold", "CostOfGoodsSold"]
 SGA_TAGS = ["SellingGeneralAndAdministrativeExpense"]
-RND_TAGS = ["ResearchAndDevelopmentExpense", "ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost"]
+SELLING_TAGS = ["SellingAndMarketingExpense"]                 # Nov 5: some companies (ADBE) report the two halves of
+ADMIN_TAGS = ["GeneralAndAdministrativeExpense"]              # SG&A separately and never the combined tag
+RND_TAGS = ["ResearchAndDevelopmentExpense", "ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost",
+            "ResearchAndDevelopmentExpenseSoftwareExcludingAcquiredInProcessCost"]   # Nov 5: ADBE uses the last one
 DEFERRED_REVENUE_TAGS = ["ContractWithCustomerLiabilityCurrent", "DeferredRevenueCurrent"]
 RPO_TAGS = ["RevenueRemainingPerformanceObligation"]
 INVENTORY_TAGS = ["InventoryNet"]
@@ -203,6 +206,11 @@ def _minus(a, b):
     return round(a - b, 4)
 
 
+def _sum_by_year(a, b):
+    """{year_end: a + b} for the years both series report (SG&A built from selling + general and administrative)."""
+    return {end: a[end] + b[end] for end in a if end in b}
+
+
 def compute_ratios(cik, ratios, last_year_end=None, skip_newest=SKIP_NEWEST):
     """The agent's tool. Computes the ratios the model asked for, for the two latest fiscal years before any cutoff.
     Returns {"fiscal_years": [...], "values": {ratio: {year_end: value}}, "unknown_ratios": [...]}.
@@ -235,7 +243,8 @@ def compute_ratios(cik, ratios, last_year_end=None, skip_newest=SKIP_NEWEST):
     if not gross and cogs:
         gross = {e: revenue[e] - cogs[e] for e in cogs if e in revenue}
     data = {
-        "costs": f(TOTAL_COSTS_TAGS), "sga": f(SGA_TAGS), "rnd": f(RND_TAGS), "capex": f(CAPEX_TAGS),
+        "costs": f(TOTAL_COSTS_TAGS), "sga": f(SGA_TAGS) or _sum_by_year(f(SELLING_TAGS), f(ADMIN_TAGS)),
+        "rnd": f(RND_TAGS), "capex": f(CAPEX_TAGS),
         "dna": f(DEPRECIATION_TAGS), "ocf": f(OPERATING_CASH_FLOW_TAGS), "interest": f(INTEREST_EXPENSE_TAGS),
         "nonint": f(NONINTEREST_EXPENSE_TAGS), "provision": f(PROVISION_TAGS),
         "deferred": f(DEFERRED_REVENUE_TAGS, False), "rpo": f(RPO_TAGS, False),
