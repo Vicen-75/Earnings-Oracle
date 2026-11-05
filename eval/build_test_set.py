@@ -174,11 +174,15 @@ def check(limit=None):
     checks = {r["ticker"]: r for r in _read(CHECKS_PATH) if not r["status"].startswith("ERROR")}
     tried, errors_in_a_row = 0, 0
     for company in universe:
-        if sum(r["status"] == "ACCEPTED" for r in checks.values()) >= TARGET_SIZE:
-            break
         ticker = company["ticker"]
         if ticker in checks:
             continue
+        # Stop once TARGET_SIZE companies EARLIER in the order are accepted. Counting earlier ones only (Nov 6 fix)
+        # means a company that errored is retried even when 200 were already accepted after it: if it passes, it
+        # takes its place by order and the last one drops out, exactly as the pre-registered rule says.
+        earlier = sum(r["status"] == "ACCEPTED" and int(r["order"]) < int(company["order"]) for r in checks.values())
+        if earlier >= TARGET_SIZE:
+            break
         if limit is not None and tried >= limit:
             break
         tried += 1
