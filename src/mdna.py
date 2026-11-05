@@ -29,9 +29,10 @@ FILINGS_TO_READ = 2
 MAX_CHARS_PER_FILING = None
 
 # --- Finding the section (Nicolas's logic, unchanged) ------------------------------------------------------
-START_PATTERN = r"\bitem\s+7\s*[.:\-]?\s*management"
+DASH = "[.:\\-\u2013\u2014]"   # Javier, Nov 5: also en and em dashes ("ITEM 7 \u2013 MANAGEMENT'S", Martin Marietta)
+START_PATTERN = r"\bitem\s+7\s*" + DASH + r"?\s*management"
 START_CONFIRM = r"results of operations\s*\.?\s+the following\b"     # separates the real heading from the table of contents
-END_PATTERN = r"\bitem\s+(?:7a\s*[.:\-]?\s*quantitative|8\s*[.:\-]?\s*financial)"
+END_PATTERN = r"\bitem\s+(?:7a\s*" + DASH + r"?\s*quantitative|8\s*" + DASH + r"?\s*financial)"
 MIN_SECTION_CHARS = 5000                                             # an MD&A is never shorter than this
 
 
@@ -53,19 +54,81 @@ def find_mdna_start(text):
 
 
 def find_mdna_end(text, start):
-    """Position of the first 'Item 7A' or 'Item 8' heading at least MIN_SECTION_CHARS after the start, or None."""
-    ending = re.search(END_PATTERN, text[start + MIN_SECTION_CHARS:], re.IGNORECASE)
-    return start + MIN_SECTION_CHARS + ending.start() if ending else None
+    """Position of the first 'Item 7A' or 'Item 8' heading at least MIN_SECTION_CHARS after the start, or None.
+    Javier, Nov 5: cross-references ('...in Item 8 - Financial Statements of this report') are skipped (PLBC)."""
+    for ending in re.finditer(END_PATTERN, text[start + MIN_SECTION_CHARS:], re.IGNORECASE):
+        position = start + MIN_SECTION_CHARS + ending.start()
+        if not is_cross_reference(text, position):
+            return position
+    return None
 
 
-def extract_mdna_from_text(text):
-    """The MD&A section as a string, or None if the boundaries cannot be found."""
-    start = find_mdna_start(text)
+# --- Javier: headings vs references (code written with help from Claude) ---
+# "Item 7" and "Item 8" appear in three roles: real headings, table-of-contents lines, and cross-references inside
+# other sections. Only headings may start or end the MD&A. PLBC (Nov 5) started at 'see "Item 7. Management's ... -
+# Capital Standards."' inside Item 1 and ended at '...in Item 8 - Financial Statements ... of this Annual Report'.
+CROSS_REFERENCE_BEFORE = re.compile(
+    r"(?:\bsee|\bin|\bunder|\bto|\bwithin|\bincluded\s+in|[\u201c\u2018\"'])\s*(?:part\s+ii\s*[,.]?\s*)?"
+    r"[\u201c\u2018\"']?\s*$", re.IGNORECASE)
+TOC_LINE_AFTER = re.compile(r"(?:\b\d{1,3}|\bF-\d{1,3})\s+item\s+\d", re.IGNORECASE)   # "...Operations 24 Item 7A"
+TOC_WINDOW = 250
+
+
+def is_cross_reference(text, position):
+    """True if the Item heading at this position is a reference ('see "Item 7...', 'in Item 8 -'), not a heading."""
+    return CROSS_REFERENCE_BEFORE.search(text[max(0, position - 30):position]) is not None
+
+
+def is_toc_entry(text, position):
+    """True if the Item heading at this position is a table-of-contents line: its title is followed by a page number
+    and the next Item ('... Results of Operations 24 Item 7A.'). A real heading is followed by its first paragraph."""
+    return TOC_LINE_AFTER.search(text[position:position + TOC_WINDOW]) is not None
+
+
+def extract_mdna_from_text(text, validate=True):
+    """The MD&A section as a string, or None if the boundaries cannot be found or what they enclose is not an MD&A.
+    validate=False returns what the rules found without the check (eval/mdna_coverage.py uses it to report rejections)."""
+    ok = (lambda section: validate_section(section)[0]) if validate else (lambda section: True)
+    candidates = []
+    start = find_mdna_start(text)                   # Nicolas's rule
     if start is not None:
         end = find_mdna_end(text, start)
-        if end is not None:
-            return text[start:end]
-    return extract_mdna_fallback(text)          # Nicolas's rule found nothing: try the closest-heading rule
+        if end is not None and ok(text[start:end]):
+            candidates.append((start, end))
+    span = fallback_span(text, validate)            # the earliest valid heading
+    if span:
+        candidates.append(span)
+    if not candidates:
+        return None
+    # Javier, Nov 5: if both rules find a section, keep the one that starts first. On MLM, Nicolas's confirm phrase
+    # matched a running page header ("...Results of Operations The following table..."), half-way into the MD&A.
+    start, end = min(candidates)
+    return text[start:end]
+
+
+# --- Javier: one validation rule for every way of finding the MD&A (code written with help from Claude) ---
+# JPM (Nov 2026): its Item 7 is a two-sentence pointer ("appears on pages 46-160"), so the fallback paired the table of
+# contents with the pointer's Item 7A and returned Items 1 to 6 (158,000 characters of business description and risk
+# factors). The section looked fine by length. These checks catch that, and src/locate_mdna.py uses the same function
+# to accept or reject what its agent extracts, so the parser and the agent are held to one rule.
+ITEM_HEADING = r"\bitem\s+(\d{1,2}[a-c]?)\s*" + DASH
+ITEMS_ALLOWED_INSIDE = {"7", "7A", "8"}          # the MD&A's own heading and the ones right after it
+MAX_OTHER_ITEMS = 3                              # a real MD&A cross-references a few items at most
+MDNA_LANGUAGE = r"\b(?:compared (?:with|to)|increased?|decreased?|results of operations)\b"
+MIN_MDNA_LANGUAGE = 3        # Nov 5: was 10; small companies with little activity (MWH, KOAN, LATA) were rejected
+
+
+def validate_section(section):
+    """(True, "ok") if the text looks like an MD&A, else (False, reason)."""
+    if not section or len(section) < MIN_SECTION_CHARS:
+        return False, f"too short ({len(section or ''):,} characters, an MD&A has at least {MIN_SECTION_CHARS:,})"
+    others = {m.group(1).upper() for m in re.finditer(ITEM_HEADING, section, re.IGNORECASE)} - ITEMS_ALLOWED_INSIDE
+    if len(others) > MAX_OTHER_ITEMS:
+        return False, f"contains headings of other 10-K items ({', '.join(sorted(others)[:8])}): not only the MD&A"
+    language = len(re.findall(MDNA_LANGUAGE, section, re.IGNORECASE))
+    if language < MIN_MDNA_LANGUAGE:
+        return False, f"little MD&A language ({language} comparisons like 'compared with' or 'increased')"
+    return True, "ok"
 
 
 # --- Javier: fallback when the confirm phrase is missing (code written with help from Claude) ---
@@ -75,35 +138,60 @@ def extract_mdna_from_text(text):
 # match, find where the section would end (first Item 7A / Item 8 heading at least MIN_SECTION_CHARS later). The real
 # end is shared by the TOC entry, the early cross-references and the real heading, so for each end we keep only the
 # CLOSEST heading before it, then take the longest of those sections.
-def extract_mdna_fallback(text):
-    """MD&A by the closest-heading rule, or None."""
-    best = {}                                                   # end position -> closest start before it
+#
+# Nov 5, 2026: replaced "closest heading" with "earliest heading that passes validation". Martin Marietta prints
+# "Item 7 - Management's Discussion..." as a running header on every page, so the closest heading was the LAST page
+# header and the section lost its first half (53k of ~110k characters). Now: skip table-of-contents entries (another
+# Item heading follows within TOC_WINDOW characters), try the remaining headings from earliest to latest, and keep the
+# first whose section passes validate_section(). Early cross-references (PEP, Item 1) produce sections that contain
+# other Items, fail validation and are skipped, which is what the closest-heading rule was protecting against.
+def fallback_span(text, validate=True):
+    """(start, end) of the MD&A by the earliest-valid-heading rule, or None. Table-of-contents lines and
+    cross-references are skipped. validate=False returns the earliest candidate unchecked."""
     for match in re.finditer(START_PATTERN, text, re.IGNORECASE):
-        end = find_mdna_end(text, match.start())
-        if end is not None:
-            best[end] = max(best.get(end, -1), match.start())
-    sections = [(end - start, start, end) for end, start in best.items() if end - start >= MIN_SECTION_CHARS]
-    if not sections:
-        return None
-    _, start, end = max(sections)
-    return text[start:end]
+        start = match.start()
+        if is_toc_entry(text, start) or is_cross_reference(text, start):
+            continue
+        end = find_mdna_end(text, start)
+        if end is None:
+            continue
+        if not validate or validate_section(text[start:end])[0]:
+            return start, end
+    return None
+
+
+def extract_mdna_fallback(text, validate=True):
+    """MD&A by the earliest-valid-heading rule, or None."""
+    span = fallback_span(text, validate)
+    return text[span[0]:span[1]] if span else None
+
+
+@lru_cache(maxsize=8)
+def fetch_html(url):
+    """The 10-K's HTML, or None. Cached (a few filings only: some are over 10 MB) so src/locate_mdna.py reuses it."""
+    response = _get(url)
+    return response.text if response.status_code == 200 else None
 
 
 @lru_cache(maxsize=64)
 def extract_mdna_from_url(url):
     """Download one 10-K and return its MD&A text, or None. Cached: each filing is downloaded once per session."""
-    response = _get(url)
-    if response.status_code != 200:
+    html = fetch_html(url)
+    if html is None:
         return None
-    return extract_mdna_from_text(html_to_text(response.text))
+    return extract_mdna_from_text(html_to_text(html))
+
+
+def filings_to_read(cik, skip_newest=SKIP_NEWEST, how_many=FILINGS_TO_READ):
+    """The 10-Ks whose MD&A the tools read, newest first (the newest is skipped in backtest mode)."""
+    return list_10ks(cik, how_many=how_many + skip_newest)[skip_newest:]
 
 
 def extract_mdna(cik, skip_newest=SKIP_NEWEST, how_many=FILINGS_TO_READ):
     """MD&A for the company's recent 10-Ks, newest first: [{"fiscal_year_end", "url", "text"}].
     Filings where the section could not be found are left out, so an empty list means 'MD&A not found'."""
-    filings = list_10ks(cik, how_many=how_many + skip_newest)[skip_newest:]
     found = []
-    for filing in filings:
+    for filing in filings_to_read(cik, skip_newest, how_many):
         text = extract_mdna_from_url(filing["url"])
         if text:
             found.append({"fiscal_year_end": filing["fiscal_year_end"], "url": filing["url"], "text": text})
@@ -115,14 +203,21 @@ def get_mdna(cik, skip_newest=SKIP_NEWEST):
     """The agent's tool. Returns {"filings": [{"fiscal_year_end", "url", "chars", "text"}]} with the MD&A of each
     filing read, or {"error": "MD&A not found", "cik": cik} when no section could be extracted."""
     sections = extract_mdna(cik, skip_newest=skip_newest)
+    hint = "call locate_mdna to find the section through the filing's table of contents"
     if not sections:
-        return {"error": "MD&A not found", "cik": cik}
+        return {"error": "MD&A not found", "cik": cik, "next_step": hint}
     filings = []
     for s in sections:
         text = s["text"] if MAX_CHARS_PER_FILING is None else s["text"][:MAX_CHARS_PER_FILING]
         filings.append({"fiscal_year_end": s["fiscal_year_end"], "url": s["url"], "chars": len(s["text"]),
                         "truncated": len(text) < len(s["text"]), "text": text})
-    return {"cik": cik, "filings": filings}
+    result = {"cik": cik, "filings": filings}
+    missing = [f["fiscal_year_end"] for f in filings_to_read(cik, skip_newest)
+               if f["fiscal_year_end"] not in {s["fiscal_year_end"] for s in sections}]
+    if missing:
+        result["missing_filings"] = missing             # found in one 10-K but not the other
+        result["next_step"] = hint
+    return result
 
 
 # --- Run by hand -------------------------------------------------------------------------------------------

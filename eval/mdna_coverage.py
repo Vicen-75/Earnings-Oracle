@@ -7,6 +7,7 @@
 #   OTHER             Item 7 is there but our boundaries fail -> look at the filing by hand
 # No Gemini calls; EDGAR only. About 10-15 minutes for 50 companies.
 #
+#   REJECTED          the rules found a section but validate_section() rejected it (Nov 5): is the check too strict?
 # Run from the repository root:
 #   python -m eval.mdna_coverage            # 50 random companies, seed 883, writes eval/mdna_coverage.csv
 #   python -m eval.mdna_coverage 100 7      # 100 companies, seed 7
@@ -17,7 +18,7 @@ import sys
 from pathlib import Path
 
 from src.edgar import _get_json, list_10ks
-from src.mdna import _get, html_to_text, extract_mdna_from_text
+from src.mdna import _get, html_to_text, extract_mdna_from_text, validate_section
 
 OUT = Path("eval/mdna_coverage.csv")
 FIELDS = ["ticker", "cik", "name", "fiscal_year_end", "url", "found", "chars", "item7_hits", "mdna_title_hits",
@@ -69,6 +70,11 @@ def main(n=50, seed=883):
                 row["found"], row["chars"] = bool(mdna), len(mdna or "")
                 if not mdna:
                     row["item7_hits"], row["mdna_title_hits"], row["mentions_exhibit_13"], row["diagnosis"] = diagnose(text)
+                    # Nov 5: the parser's output now has to pass validate_section(). Report when the rules found a
+                    # section and the check rejected it, so we can tell a real miss from a strict check.
+                    raw = extract_mdna_from_text(text, validate=False) if text else None
+                    if raw:
+                        row["diagnosis"] = f"REJECTED ({len(raw):,} chars): {validate_section(raw)[1]}"
             except Exception as error:
                 row["found"], row["diagnosis"] = False, f"error: {type(error).__name__}"
             rows.append(row)
@@ -89,7 +95,8 @@ def main(n=50, seed=883):
     labels = {}
     for r in rows:
         if not r["found"]:
-            labels[r["diagnosis"]] = labels.get(r["diagnosis"], 0) + 1
+            key = r["diagnosis"].split(" (")[0]
+            labels[key] = labels.get(key, 0) + 1
     print("Failures by diagnosis:", labels or "none", f"\nResults in {OUT}")
 
 
