@@ -15,7 +15,7 @@ from google.genai import types
 
 from src import edgar
 from src.llm import client, MODEL
-from src.prompts import TOOL_SYSTEM_V4
+from src.prompts import PROMPTS
 from src import ratio_directory
 
 from src import mdna as mdna_impl                      # real MD&A extractor (Nicolas)
@@ -35,8 +35,11 @@ def _under_construction(tool_name):
     return tool
 
 
-MAX_TOOL_CALLS = 7          # hard stop so one ticker cannot burn the free tier (6 + the locate_mdna fallback)
-LOG_PATH = Path("eval/tool_log.jsonl")
+MAX_TOOL_CALLS = 9          # hard stop so one ticker cannot burn the free tier (V5 leaves room to go back and check)
+DEFAULT_PROMPT = "V5"
+THINKING_LEVEL = "LOW"      # Nov 5: was MINIMAL; LOW lets the model plan its investigation instead of following a script
+LOG_PATH = Path("eval/tool_log.jsonl")          # command-line runs (committed: evidence for the report)
+APP_LOG_PATH = Path("eval/app_runs.jsonl")      # app runs (git-ignored: local record so a run can be reviewed later)
 
 # --- 1. What the model is allowed to call -------------------------------------------------------------------
 # ReAct: every tool takes a required "reason" argument, the model's thought before it acts ("the card says SIC 7372,
@@ -56,18 +59,24 @@ def _declare(name, description, properties, required):
 TOOLS = types.Tool(function_declarations=[
     _declare("get_company_card",
              "Company identity, industry (SIC code and description), fiscal year end, which 10-K filings exist, "
-             "and whether it reports an operating income line. Call this first.",
+             "the target metric (operating income or pre-tax income), and the CIK the other tools need.",
              {"ticker": S(type="STRING")}, ["ticker"]),
     _declare("get_industry_playbook",
              "Retrieve the ratio directory entry for an industry: what drives operating income there, which ratios to "
              "compute and why (with definitions), which to avoid, and what to look for in the MD&A. Pass the SIC code "
              "from the company card, or a group name if the SIC code does not fit the business (a conglomerate, or a "
-             "second segment). The answer lists every group and every ratio name.",
-             {"sic_code": S(type="INTEGER"), "group": S(type="STRING")}, []),
+             "second segment). Groups: " + "; ".join(f"{name} = {g['label']}"
+                                                    for name, g in ratio_directory.INDUSTRY_GROUPS.items()) + ".",
+             {"sic_code": S(type="INTEGER"),
+              # Nov 5: only existing group names (ARRY asked for an invented "Renewable Energy Equipment")
+              "group": S(type="STRING", enum=list(ratio_directory.INDUSTRY_GROUPS))}, []),
     _declare("compute_ratios",
              "Compute the ratios you choose (up to 10, by name from the ratio directory) for the company's two latest "
              "fiscal years, from its XBRL data on EDGAR. Values are numbers or 'not reported'.",
-             {"cik": S(type="STRING"), "ratios": S(type="ARRAY", items=S(type="STRING"))}, ["cik", "ratios"]),
+             {"cik": S(type="STRING"),
+              # Nov 5: only names from the directory are allowed (ADBE invented "Research and Development Expense Ratio")
+              "ratios": S(type="ARRAY", items=S(type="STRING", enum=list(ratio_directory.RATIOS)))},
+             ["cik", "ratios"]),
     _declare("get_mdna",
              "The full text of Management's Discussion and Analysis (Item 7) from the last two 10-Ks. "
              "Read it for the topics the playbook names: outlook, demand, pricing, margins, costs and risks. "
@@ -161,7 +170,20 @@ def _keep_for_display(tool, result):
     return result
 
 
-def investigate(ticker, anonymize=False, system_instruction=TOOL_SYSTEM_V4, on_event=None, write_log=True):
+SELF_CHECK = """Before you finalize, run the check: does the MD&A attribute the results or the outlook to something a \
+ratio could confirm or contradict (pricing or mix: gross_margin; cost discipline: sga_to_revenue or cost_ratio; \
+volume: revenue_growth; inventory: inventory_turnover; investment: capex_to_revenue or rnd_to_revenue; credit: \
+provision_to_core_income)? If such a ratio is not among the ones you computed, call compute_ratios now, then give your \
+final answer, changed if the new evidence changes it. If everything relevant is already computed, say so. Either way, \
+use the same answer format and end it with one line "Self-check: ..." after the Rationale."""
+
+
+def _draft_summary(text):
+    lines = [l.strip() for l in text.splitlines() if l.strip()][:2]
+    return "Draft answer: " + " | ".join(lines)[:200] + ". Asked to run the self-check before finalizing."
+
+
+def investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, write_log=True, log_path=None):
     """Let the model investigate one ticker with the tools.
     Returns {"answer", "steps", "results", "usage"}:
       steps    [{"reason", "tool", "args", "ok"}] in the order the model called them (the ReAct trace; the evidence
@@ -171,19 +193,19 @@ def investigate(ticker, anonymize=False, system_instruction=TOOL_SYSTEM_V4, on_e
     on_event(event) is called after every tool call ({"type": "step", ...}) and on rate-limit waits, so the app can
     show progress live. write_log=False keeps app runs out of eval/tool_log.jsonl."""
     config = types.GenerateContentConfig(
-        system_instruction=system_instruction,
+        system_instruction=PROMPTS[prompt],
         tools=[TOOLS],
         temperature=0,
-        thinking_config=types.ThinkingConfig(thinking_level="MINIMAL"),
+        thinking_config=types.ThinkingConfig(thinking_level=THINKING_LEVEL),
     )
     contents = [types.Content(role="user", parts=[types.Part(text=f"Ticker: {ticker}")])]
-    log, results, calls = [], {}, 0
+    log, results, calls, draft = [], {}, 0, None
     usage = {"prompt_tokens": 0, "output_tokens": 0, "model_calls": 0}
 
     def finish(answer):
         if write_log:
-            _write_log(ticker, log, answer, usage, anonymize)
-        return {"answer": answer, "steps": log, "results": results, "usage": usage}
+            _write_log(ticker, log, answer, usage, anonymize, prompt, log_path or LOG_PATH)
+        return {"answer": answer, "steps": log, "results": results, "usage": usage, "prompt": prompt}
 
     while True:
         response = _generate(contents, config, on_event)
@@ -192,15 +214,29 @@ def investigate(ticker, anonymize=False, system_instruction=TOOL_SYSTEM_V4, on_e
             usage["prompt_tokens"] += response.usage_metadata.prompt_token_count or 0
             usage["output_tokens"] += response.usage_metadata.candidates_token_count or 0
 
-        if not response.function_calls:                               # final answer
-            return finish(response.text or "[the model returned no text]")
+        if not response.function_calls:
+            text = response.text or "[the model returned no text]"
+            if draft is not None or "no data found" in text.lower()[:300]:
+                return finish(text)                                   # final answer (after the self-check)
+            # --- Self-check (Nov 5): the first answer is a draft. The code asks once whether the MD&A makes a claim a
+            # ratio could test; the model decides whether to compute one or to confirm. Prompt wording alone was
+            # ignored in every test run; this turn guarantees the moment to reflect, the choice stays the model's.
+            draft = text
+            entry = {"model_call": usage["model_calls"], "reason": "", "tool": "draft_answer", "args": {}, "ok": True,
+                     "observation": _draft_summary(text)}
+            log.append(entry)
+            if on_event:
+                on_event({"type": "step", **entry})
+            contents.append(response.candidates[0].content)
+            contents.append(types.Content(role="user", parts=[types.Part(text=SELF_CHECK)]))
+            continue
 
         contents.append(response.candidates[0].content)               # keep the model's tool request (and thought signatures)
         response_parts = []
         for call in response.function_calls:
             calls += 1
-            if calls > MAX_TOOL_CALLS:
-                return finish("no data found (tool budget exceeded)")
+            if calls > MAX_TOOL_CALLS:                                # out of budget: keep the draft if there is one
+                return finish(draft or "no data found (tool budget exceeded)")
             args = dict(call.args or {})
             reason = args.pop("reason", "")
             try:
@@ -216,20 +252,28 @@ def investigate(ticker, anonymize=False, system_instruction=TOOL_SYSTEM_V4, on_e
             if isinstance(result, dict) and result.get("locator_steps"):
                 entry["substeps"] = result["locator_steps"]                # the locator agent's own trace
             log.append(entry)
-            results[call.name] = _keep_for_display(call.name, result)
+            shown = _keep_for_display(call.name, result)
+            previous = results.get(call.name)
+            if call.name == "compute_ratios" and isinstance(previous, dict) and "values" in previous \
+                    and isinstance(shown, dict) and "values" in shown:   # a second call adds ratios, keep both
+                shown = {**previous, "values": {**previous["values"], **shown["values"]},
+                         "kinds": {**previous["kinds"], **shown["kinds"]}}
+            results[call.name] = shown
             if on_event:
                 on_event({"type": "step", **entry})
             response_parts.append(types.Part.from_function_response(name=call.name, response={"result": result}))
         contents.append(types.Content(role="user", parts=response_parts))
 
 
-def run(ticker, anonymize=False, system_instruction=TOOL_SYSTEM_V4, verbose=True):
+def run(ticker, anonymize=False, prompt=DEFAULT_PROMPT, verbose=True):
     """Command-line version of investigate(): prints the ReAct trace (thought, action, observation) and the answer.
     Returns (answer_text, steps)."""
-    out = investigate(ticker, anonymize=anonymize, system_instruction=system_instruction)
+    out = investigate(ticker, anonymize=anonymize, prompt=prompt)
     if verbose:
-        print(f"\n=== {ticker}: {len(out['steps'])} tool calls, {out['usage']['model_calls']} model calls ===")
+        print(f"\n=== {ticker} (prompt {prompt}): {len(out['steps'])} tool calls, "
+              f"{out['usage']['model_calls']} model calls ===")
         for entry in out["steps"]:
+            print(f"   [model call {entry.get('model_call')}]")
             print(f"   thought: {entry['reason']}")
             print(f"   action:  {entry['tool']}({entry['args']})")
             print(f"   observe: {entry['observation']}")
@@ -248,13 +292,22 @@ def _anonymize(result):
     return result
 
 
-def _write_log(ticker, log, answer, usage, anonymize):
-    LOG_PATH.parent.mkdir(exist_ok=True)
-    with open(LOG_PATH, "a") as f:
-        f.write(json.dumps({"ticker": ticker, "anonymized": anonymize, "ratios_available": RATIOS_AVAILABLE, "tools": log,
+def _write_log(ticker, log, answer, usage, anonymize, prompt, path=LOG_PATH):
+    path.parent.mkdir(exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"ticker": ticker, "prompt": prompt, "thinking": THINKING_LEVEL, "anonymized": anonymize,
+                            "ratios_available": RATIOS_AVAILABLE, "tools": log,
                             "usage": usage, "answer": answer, "ts": time.strftime("%Y-%m-%d %H:%M:%S")}) + "\n")
 
 
 if __name__ == "__main__":
-    for t in sys.argv[1:] or ["CAT", "ADBE"]:
-        run(t)
+    # python -m src.agent CAT ADBE            (default prompt)
+    # python -m src.agent --prompt V4 CAT     (compare prompt versions on the same tickers)
+    args = sys.argv[1:]
+    chosen = DEFAULT_PROMPT
+    if "--prompt" in args:
+        i = args.index("--prompt")
+        chosen = args[i + 1].upper()
+        args = args[:i] + args[i + 2:]
+    for t in args or ["CAT", "ADBE"]:
+        run(t, prompt=chosen)

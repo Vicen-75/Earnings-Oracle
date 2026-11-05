@@ -114,6 +114,9 @@ def _show_item(entry):
     if entry["tool"] == "stop":
         st.markdown(f"- *Observation:* {entry['observation']}")
         return
+    if entry["tool"] == "draft_answer":            # the model answered; the app asks it once to run the self-check
+        st.markdown(f"- {entry['observation']}")
+        return
     ok = entry.get("ok", not str(entry.get("observation", "")).startswith(("Error", "Rejected")))
     observation = entry.get("observation") or ("ok" if ok else "the tool reported an error")
     st.markdown(f"- *Thought:* {entry.get('reason') or '(none given)'}\n"
@@ -131,7 +134,8 @@ class TraceWriter:
         if key != self.key:                                  # a new model call starts a new step
             self.n += 1
             self.key = key
-            st.markdown(f"**Step {self.n} · {_agent_label(entry, agent)}**")
+            suffix = " · Draft answer" if entry["tool"] == "draft_answer" else ""
+            st.markdown(f"**Step {self.n} · {_agent_label(entry, agent)}{suffix}**")
         _show_item(entry)
         for sub in entry.get("substeps", []):                # the locator's own model calls, in order
             self.add(sub, agent="locator")
@@ -150,7 +154,7 @@ class TraceWriter:
             st.markdown("- See the answer below (the direction could not be read from the text).")
         u = out["usage"]
         st.caption(f"Main agent: {u['model_calls']} model calls, {u['prompt_tokens']:,} tokens in, "
-                   f"{u['output_tokens']:,} tokens out.")
+                   f"{u['output_tokens']:,} tokens out. Prompt {out.get('prompt', '?')}.")
 
 
 def trace_label(n):
@@ -327,7 +331,7 @@ if st.session_state.pop("run_now", False):
         st.stop()
     st.session_state.requests_used += 1
 
-    from src.agent import investigate          # imported here so the page loads even if the model client fails
+    from src.agent import investigate, APP_LOG_PATH   # imported here so the page loads even if the model client fails
 
     # The trace is written live into this box and stays here, open, as the record of the run (Nov 5: it used to be
     # cleared and redrawn at the bottom of the page, which was disorienting).
@@ -341,7 +345,7 @@ if st.session_state.pop("run_now", False):
                 writer.add(event)
 
         try:
-            out = investigate(ticker, on_event=on_event, write_log=False)
+            out = investigate(ticker, on_event=on_event, log_path=APP_LOG_PATH)    # local, git-ignored record
         except Exception as error:
             status.update(label="The analysis failed", state="error")
             st.error(f"The model could not complete the analysis ({type(error).__name__}). "
