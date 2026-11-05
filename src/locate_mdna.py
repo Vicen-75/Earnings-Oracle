@@ -26,7 +26,8 @@ from bs4 import BeautifulSoup, NavigableString
 from google.genai import types
 
 from src.edgar import ticker_to_cik
-from src.llm import client, MODEL
+from src.llm import MODEL
+from src.key_pool import pool
 from src.mdna import (fetch_html, extract_mdna_from_url, filings_to_read, validate_section, START_PATTERN, DASH,
                       SKIP_NEWEST)
 from src.prompts import LOCATE_SYSTEM_V1
@@ -224,15 +225,7 @@ TOOLS = types.Tool(function_declarations=[
 
 
 def _generate(contents, config):
-    for attempt in range(4):
-        try:
-            return client.models.generate_content(model=MODEL, contents=contents, config=config)
-        except Exception as error:
-            if any(code in str(error) for code in ("429", "503", "RESOURCE_EXHAUSTED", "UNAVAILABLE")):
-                time.sleep(15)
-                continue
-            raise
-    raise RuntimeError("gave up after repeated retries")
+    return pool.generate(MODEL, contents, config)      # same key as the agent run that called the locator
 
 
 def _observe(tool, result):

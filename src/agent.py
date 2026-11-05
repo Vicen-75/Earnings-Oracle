@@ -14,7 +14,8 @@ from pathlib import Path
 from google.genai import types
 
 from src import edgar
-from src.llm import client, MODEL
+from src.llm import MODEL
+from src.key_pool import pool                       # several API keys, one per analysis (Nov 6)
 from src.prompts import PROMPTS
 from src import ratio_directory
 
@@ -100,19 +101,9 @@ IMPL = {
 
 # --- 2. The loop -------------------------------------------------------------------------------------------
 def _generate(contents, config, on_event=None):
-    """One model call with the same retry policy as src/llm.ask_gemini."""
-    for attempt in range(4):
-        try:
-            return client.models.generate_content(model=MODEL, contents=contents, config=config)
-        except Exception as error:
-            if "429" in str(error) or "503" in str(error) or "RESOURCE_EXHAUSTED" in str(error) or "UNAVAILABLE" in str(error):
-                print("   (rate limit or overload, waiting 15 seconds...)")
-                if on_event:
-                    on_event({"type": "wait", "seconds": 15})
-                time.sleep(15)
-                continue
-            raise
-    raise RuntimeError("gave up after repeated retries")
+    """One model call. src/key_pool.py picks the key, moves to another key on a rate limit, and waits only when
+    every key is busy (on_event gets {"type": "wait"} so the page can say so)."""
+    return pool.generate(MODEL, contents, config, on_event)
 
 
 def observe(tool, result):
@@ -199,6 +190,13 @@ def _tools_for_run(skip_newest):
 
 def investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, write_log=True, log_path=None,
                 skip_newest=None):
+    """Run one analysis on one API key from the pool (the locator agent inside it uses the same key)."""
+    with pool.run():
+        return _investigate(ticker, anonymize, prompt, on_event, write_log, log_path, skip_newest)
+
+
+def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, write_log=True, log_path=None,
+                 skip_newest=None):
     """Let the model investigate one ticker with the tools.
     Returns {"answer", "steps", "results", "usage"}:
       steps    [{"reason", "tool", "args", "ok"}] in the order the model called them (the ReAct trace; the evidence

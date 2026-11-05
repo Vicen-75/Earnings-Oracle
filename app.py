@@ -480,6 +480,7 @@ def run_queue(queue, redraw=None):
     only loses the test in progress. Clicking other buttons while this runs restarts the page and stops the queue."""
     from src.agent import APP_LOG_PATH, investigate
     from src.backtest import run_test
+    from src.run_limiter import waiting_line
     store = tests_store()
     st.warning("Tests are running. Keep this tab open and avoid clicking other controls until they finish.")
     progress = st.progress(0.0, text=f"0 of {len(queue)} done")
@@ -494,8 +495,13 @@ def run_queue(queue, redraw=None):
                     st.caption(f"Model busy (free tier limit), waiting {event['seconds']} seconds...")
                 else:
                     _ = writer.add(event)
+
+            def on_wait(position, running, ticker=row["ticker"]):
+                status.update(label=f"{ticker}: waiting for a free slot (#{position} in line, {running} running)...")
             try:
-                res = run_test(row, investigate, parse_headline, on_event=on_event, log_path=APP_LOG_PATH)
+                with waiting_line.slot(on_wait):      # tests share the waiting line with visitors (Nov 6)
+                    status.update(label=f"{row['ticker']}: the model is investigating (FY2025 hidden)...")
+                    res = run_test(row, investigate, parse_headline, on_event=on_event, log_path=APP_LOG_PATH)
                 store[row["ticker"]] = res
                 status.update(label=f"**{row['ticker']}**: model {res['direction'] or 'no answer'}, truth "
                                     f"{row['truth']} · {verdict_badge(res['correct'])}",
@@ -550,32 +556,60 @@ def analyze_tab():
         st.session_state.requests_used += 1
 
         from src.agent import investigate, APP_LOG_PATH   # imported here so the page loads even if the model client fails
+        from src.run_limiter import waiting_line
 
-        # The trace is written live into this box and stays here, open, as the record of the run (Nov 5: it used to be
-        # cleared and redrawn at the bottom of the page, which was disorienting).
-        with st.status("The model is investigating...", expanded=True) as status:
-            writer = TraceWriter()
+        # Waiting line (Nov 6): at most a few analyses run at once across all visitors, so a class of 35 does not burst
+        # past the free-tier limits of every key. Everyone else waits here, first come, first served.
+        line_box = st.empty()
 
-            def on_event(event):
-                if event["type"] == "wait":
-                    st.caption(f"Model busy (free tier limit), waiting {event['seconds']} seconds...")
-                else:
-                    _ = writer.add(event)
+        def on_wait(position, running):
+            line_box.info(f"The app is busy ({running} analyses running). You are **#{position}** in line; "
+                          "your analysis starts automatically. Keep this tab open.", icon="⏳")
 
-            try:
-                out = investigate(ticker, on_event=on_event, log_path=APP_LOG_PATH)    # local, git-ignored record
-            except Exception as error:
-                status.update(label="The analysis failed", state="error")
-                st.error(f"The model could not complete the analysis ({type(error).__name__}). "
-                         "Please try again in a minute.")
-                st.stop()
-            writer.conclude(out, *parse_headline(out["answer"]))
-        status.update(label=trace_label(writer.n), state="complete", expanded=True)
+        try:
+            with waiting_line.slot(on_wait):
+                line_box.empty()
 
+                # The trace is written live into this box and stays here, open, as the record of the run
+                # (Nov 5: it used to be cleared and redrawn at the bottom of the page, which was disorienting).
+                with st.status("The model is investigating...", expanded=True) as status:
+                    writer = TraceWriter()
+
+                    def on_event(event):
+                        if event["type"] == "wait":
+                            st.caption(f"Model busy (free tier limit), waiting {event['seconds']} seconds...")
+                        else:
+                            _ = writer.add(event)
+
+                    try:
+                        out = investigate(ticker, on_event=on_event, log_path=APP_LOG_PATH)  # git-ignored record
+                    except Exception as error:
+                        status.update(label="The analysis failed", state="error")
+                        st.error(f"The model could not complete the analysis ({type(error).__name__}). "
+                                 "Please try again in a minute.")
+                        st.stop()
+                    writer.conclude(out, *parse_headline(out["answer"]))
+                status.update(label=trace_label(writer.n), state="complete", expanded=True)
+        except TimeoutError:
+            line_box.empty()
+            st.error("The app has been busy for a long time. Please try again in a few minutes.")
+            st.stop()
         analysis_store()[ticker] = (time.time(), out)
         show_result(ticker, company, out)
 
-    st.caption(f"New analyses used: {st.session_state.requests_used} / {MAX_REQUESTS_PER_SESSION}")
+    st.caption(f"New analyses used: {st.session_state.requests_used} / {MAX_REQUESTS_PER_SESSION} · {server_load()}")
+
+
+def server_load():
+    """One line on how busy the app is: analyses running and waiting, and how many API keys share the work."""
+    try:
+        from src.key_pool import pool
+        from src.run_limiter import waiting_line
+    except Exception:
+        return "model client unavailable"
+    line = waiting_line.status()
+    return (f"Server: {line['running']} of {line['limit']} analysis slots in use, {line['waiting']} waiting, "
+            f"{len(pool.keys)} API key(s)")
 
 
 # --- Tabs (Nov 5) ----------------------------------------------------------------------------------------------
