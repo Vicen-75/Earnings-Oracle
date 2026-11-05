@@ -1,4 +1,5 @@
 # --- Vicente: EDGAR fetch and XBRL operating income (code written with help from Claude) ---
+import os
 import time
 from datetime import date
 from functools import lru_cache
@@ -83,8 +84,11 @@ def company_card(ticker):
     if cik is None:
         return {"error": f"ticker '{ticker}' not found on EDGAR"}
     submissions = _get_json(f"https://data.sec.gov/submissions/CIK{cik}.json")
-    filings = list_10ks(cik, how_many=3)
+    skip = int(os.environ.get("EARNINGS_ORACLE_SKIP_NEWEST", "0"))   # backtest: hide the year being predicted
+    filings = list_10ks(cik, how_many=3 + skip)[skip:]
     income = annual_operating_income(cik)
+    if income and skip and filings:
+        income = {end: v for end, v in income.items() if end <= filings[0]["fiscal_year_end"]}
     return {
         "ticker": ticker.upper().strip(),
         "name": name,
