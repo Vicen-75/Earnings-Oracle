@@ -3,6 +3,9 @@
 #   momentum:        "increase" if the target metric grew in the last year the model was allowed to see, else "decrease".
 #                    A fixed, transparent rule on the numbers alone, with no model call.
 #   always_increase: the naive rule.
+#   reverse_momentum: the opposite of momentum (Nov 6). Added after the first backtest, where operating income changed
+#                    direction in 12 of 20 companies: a contrarian rule would have beaten always-increase there, so
+#                    the model has to beat it too.
 # Same target as the agent: operating income, or pre-tax income when a company reports no operating income line
 # (edgar.choose_target), and the same strict rule as the truth: "increase" means strictly greater.
 #
@@ -26,6 +29,12 @@ def momentum(cik, last_year_end):
     latest, previous = series[years[0]], series[years[1]]
     return {"direction": "increase" if latest > previous else "decrease", "target": target,
             "previous": previous, "latest": latest, "years": years[:2]}
+
+
+def reverse_momentum(momentum_result):
+    """The opposite of a momentum() result; None stays None."""
+    flip = {"increase": "decrease", "decrease": "increase"}
+    return {"direction": flip.get(momentum_result.get("direction"))}
 
 
 def always_increase():

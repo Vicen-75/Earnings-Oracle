@@ -1,5 +1,6 @@
 # --- Vicente: EDGAR fetch and XBRL operating income (code written with help from Claude) ---
 import os
+import threading
 import time
 from datetime import date
 from functools import lru_cache
@@ -12,14 +13,16 @@ HEADERS = {"User-Agent": "Earnings Oracle IS883 vicente@bu.edu"}
 # --- Vicente: speed limit and cache for every SEC request (code written with help from Claude) ---
 SECONDS_BETWEEN_REQUESTS = 0.125      # at most 8 requests per second; the SEC allows 10
 _last_request_time = [0.0]
+_speed_lock = threading.Lock()      # Nov 6: several visitors (and the parallel backtest) share one speed limit
 
 
 def _get(url):
     """Every request to the SEC goes through here, so we never go over the SEC speed limit."""
-    wait = SECONDS_BETWEEN_REQUESTS - (time.time() - _last_request_time[0])
-    if wait > 0:
-        time.sleep(wait)
-    _last_request_time[0] = time.time()
+    with _speed_lock:
+        wait = SECONDS_BETWEEN_REQUESTS - (time.time() - _last_request_time[0])
+        if wait > 0:
+            time.sleep(wait)
+        _last_request_time[0] = time.time()
     return requests.get(url, headers=HEADERS, timeout=30)
 
 
