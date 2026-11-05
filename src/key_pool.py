@@ -28,6 +28,20 @@ WAIT_SECONDS = 15                 # wait when every key is resting (same as the 
 MAX_ATTEMPTS = 6
 
 
+class ModelBusy(RuntimeError):
+    """Raised when every retry failed. kind: "daily_quota" (the keys' free daily requests are used up),
+    "rate_limit" (too many requests this minute), or "overloaded" (Google's side). The app words its message on it.
+    A RuntimeError, so code that caught the old "gave up after repeated retries" error still catches this."""
+
+    def __init__(self, kind):
+        self.kind = kind
+        super().__init__(f"gave up after repeated retries ({kind})")
+
+
+def _is_daily_quota(error):
+    return "PerDay" in str(error)                 # Gemini names the exhausted quota, e.g. ...RequestsPerDay...
+
+
 def _is_rate_limit(error):
     return any(code in str(error) for code in ("429", "RESOURCE_EXHAUSTED"))
 
@@ -138,6 +152,7 @@ class KeyPool:
         """client.models.generate_content on the run's key, with failover between keys and waits when all are busy."""
         if not self.keys:
             raise RuntimeError("No Gemini API key configured (GEMINI_API_KEYS or GEMINI_API_KEY).")
+        problem = "rate_limit"
         for attempt in range(MAX_ATTEMPTS):
             key = self.current.get()
             if key is None:                               # a call outside pool.run() (command line helpers)
@@ -156,18 +171,20 @@ class KeyPool:
                 response = key.client.models.generate_content(model=model, contents=contents, config=config)
             except Exception as error:
                 if _is_rate_limit(error):
+                    problem = "daily_quota" if _is_daily_quota(error) else "rate_limit"
                     if len(self.keys) == 1:               # one key: the old policy, wait and retry the same key
                         self._wait(on_event)
                     else:
                         self._rest(key)                   # the next attempt moves to another key (or waits
                     continue                              # if every key is resting)
                 if _is_overload(error):
+                    problem = "overloaded"
                     self._wait(on_event)
                     continue
                 raise
             self._record(key, response)
             return response
-        raise RuntimeError("gave up after repeated retries")
+        raise ModelBusy(problem)
 
     @staticmethod
     def _wait(on_event):
