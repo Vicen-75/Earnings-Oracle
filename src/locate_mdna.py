@@ -10,6 +10,12 @@
 #   validate_section() as the parser; if it fails the model gets the reason and tries again. Max MAX_CALLS calls.
 #
 # The model can only choose among anchors that exist in the file, so it cannot invent a location.
+#
+# Known limitation (Nov 5, team decision): one start and one end per filing. Reorganized 10-Ks can split the MD&A.
+# Honeywell: MD&A (p. 15) and Review of Business Segments (p. 24), then Risk Factors (p. 30) and market risks (p. 40)
+# in the middle, then Liquidity, Critical Accounting Estimates and Other Matters (p. 40-49). The locator returns the
+# first block (overview, results, segments, which drive the prediction) and misses the second. Not worth a multi-range
+# extract for a few reorganized filers before the presentation.
 # Run by hand from the repository root:   python -m src.locate_mdna JPM
 import re
 import sys
@@ -254,11 +260,14 @@ def locate_in_filing(filing, hint=""):
                                          thinking_config=types.ThinkingConfig(thinking_level="MINIMAL"))
     message = (f"10-K for the fiscal year ending {filing['fiscal_year_end']}.\n{hint}\n\nOUTLINE\n{outline_text(doc)}")
     contents = [types.Content(role="user", parts=[types.Part(text=message)])]
-    steps = []
+    steps, model_calls = [], 0
     while len(steps) < MAX_CALLS:
         response = _generate(contents, config)
-        if not response.function_calls:
-            break                                               # the model gave up (it should say why)
+        model_calls += 1
+        if not response.function_calls:                         # the model stopped without a section (it says why)
+            steps.append({"call": model_calls, "reason": "", "tool": "stop", "args": {},
+                          "observation": f"Stopped without a section: {(response.text or '').strip()[:300]}"})
+            break
         contents.append(response.candidates[0].content)
         parts = []
         for call in response.function_calls:
@@ -268,7 +277,8 @@ def locate_in_filing(filing, hint=""):
                 result = peek(doc, args.get("anchor", ""))
             else:
                 result = extract(doc, args.get("start_anchor", ""), args.get("end_anchor", ""))
-            steps.append({"reason": reason, "tool": call.name, "args": args, "observation": _observe(call.name, result)})
+            steps.append({"call": model_calls, "reason": reason, "tool": call.name, "args": args,
+                          "observation": _observe(call.name, result)})
             if call.name == "extract" and result.get("ok"):
                 labels = (doc["anchors"][args["start_anchor"]]["label"], doc["anchors"][args["end_anchor"]]["label"])
                 return result["_section"], steps, labels

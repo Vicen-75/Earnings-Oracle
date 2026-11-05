@@ -209,7 +209,8 @@ def investigate(ticker, anonymize=False, system_instruction=TOOL_SYSTEM_V4, on_e
                 result = {"error": f"{type(error).__name__}: {error}"}
             if anonymize:
                 result = _anonymize(result)                           # placeholder until src/anonymize.py exists
-            entry = {"reason": reason, "tool": call.name, "args": args,
+            entry = {"model_call": usage["model_calls"],     # which model turn asked for this (one step per turn)
+                     "reason": reason, "tool": call.name, "args": args,
                      "ok": not (isinstance(result, dict) and "error" in result),
                      "observation": observe(call.name, result)}
             if isinstance(result, dict) and result.get("locator_steps"):

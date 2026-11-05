@@ -24,14 +24,6 @@ EXAMPLES = {
     "TSM": "TSMC (files a 20-F: should say no data)",
 }
 
-TOOL_LABELS = {
-    "get_company_card": "Read the company card",
-    "get_industry_playbook": "Retrieved the industry playbook",
-    "compute_ratios": "Computed the ratios it chose",
-    "get_mdna": "Read the MD&A",
-    "locate_mdna": "Located the MD&A through the table of contents (locator agent)",
-}
-
 st.set_page_config(page_title="Earnings Oracle", layout="wide")
 st.title("Earnings Oracle")
 st.caption("Predicts whether a company's operating income (pre-tax income for banks and insurers) will rise or fall "
@@ -103,33 +95,77 @@ def describe_action(step):
     return f"{step['tool']} for {shown}" if shown else step["tool"]
 
 
-def show_step(i, step):
-    """One ReAct step: thought, action, observation."""
-    st.markdown(f"**Step {i}. {TOOL_LABELS.get(step['tool'], step['tool'])}**")
-    observation = step.get("observation") or ("ok" if step["ok"] else "the tool reported an error")
-    observation_line = f"{observation}" if step["ok"] else f":red[{observation}]"
-    st.markdown(f"- *Thought:* {step['reason'] or '(none given)'}\n"
-                f"- *Action:* `{describe_action(step)}`\n"
-                f"- *Observation:* {observation_line}")
-    if step.get("substeps"):                       # the locator agent's own thought / action / observation loop
-        lines = []
-        for j, sub in enumerate(step["substeps"], 1):
-            args = ", ".join(f"{k} {v}" for k, v in sub["args"].items())
-            lines.append(f"    {j}. **[FY {sub['filing']}]** *Thought:* {sub['reason'] or '(none)'}  \n"
-                         f"       *Action:* `{sub['tool']} {args}`  \n"
-                         f"       *Observation:* {sub['observation']}")
-        st.markdown("- *Locator agent steps:*\n" + "\n".join(lines))
+# --- The trace: one step per model call, across the main agent and the MD&A locator ----------------------------
+# Each step is one model turn: the thought(s) it wrote, the tool call(s) it asked for, and what each returned.
+# The main agent's turns and the locator's turns are numbered in one sequence, in the order they happened, so the
+# number of steps is the number of model calls (Nov 5: before, the locator's turns were folded under one step).
+def _step_key(entry, agent):
+    if agent == "main":
+        return ("main", entry.get("model_call", id(entry)))
+    return ("locator", entry.get("filing"), entry.get("call", id(entry)))
 
 
-def show_conclusion(i, target, direction, probability, answer):
-    st.markdown(f"**Step {i}. Conclusion**")
-    if "no data found" in answer.lower()[:300]:
-        st.markdown("- No data found: nothing usable to predict from.")
-    elif direction:
-        prob = f" with probability {probability:.2f}" if probability is not None else ""
-        st.markdown(f"- Weighed the evidence: {target.lower()} will **{direction}**{prob}. Reasoning in the answer above.")
-    else:
-        st.markdown("- See the answer above (direction could not be read from the text).")
+def _agent_label(entry, agent):
+    return "Main agent" if agent == "main" else f"MD&A locator, 10-K for FY ending {entry.get('filing')}"
+
+
+def _show_item(entry):
+    """Thought, action, observation for one tool call inside a step."""
+    if entry["tool"] == "stop":
+        st.markdown(f"- *Observation:* {entry['observation']}")
+        return
+    ok = entry.get("ok", not str(entry.get("observation", "")).startswith(("Error", "Rejected")))
+    observation = entry.get("observation") or ("ok" if ok else "the tool reported an error")
+    st.markdown(f"- *Thought:* {entry.get('reason') or '(none given)'}\n"
+                f"- *Action:* `{describe_action(entry)}`\n"
+                f"- *Observation:* {observation if ok else ':red[' + observation + ']'}")
+
+
+class TraceWriter:
+    """Writes the trace step by step (live, as events arrive, or all at once for a cached result)."""
+    def __init__(self):
+        self.n, self.key = 0, None
+
+    def add(self, entry, agent="main"):
+        key = _step_key(entry, agent)
+        if key != self.key:                                  # a new model call starts a new step
+            self.n += 1
+            self.key = key
+            st.markdown(f"**Step {self.n} · {_agent_label(entry, agent)}**")
+        _show_item(entry)
+        for sub in entry.get("substeps", []):                # the locator's own model calls, in order
+            self.add(sub, agent="locator")
+
+    def conclude(self, out, direction, probability):
+        self.n += 1
+        st.markdown(f"**Step {self.n} · Main agent · Conclusion**")
+        answer = out["answer"]
+        if "no data found" in answer.lower()[:300]:
+            st.markdown("- No data found: nothing usable to predict from.")
+        elif direction:
+            prob = f" with probability {probability:.2f}" if probability is not None else ""
+            st.markdown(f"- Weighed the evidence: {target_name(out).lower()} will **{direction}**{prob}. "
+                        "The reasoning is in the answer below.")
+        else:
+            st.markdown("- See the answer below (the direction could not be read from the text).")
+        u = out["usage"]
+        st.caption(f"Main agent: {u['model_calls']} model calls, {u['prompt_tokens']:,} tokens in, "
+                   f"{u['output_tokens']:,} tokens out.")
+
+
+def trace_label(n):
+    return f"How the model worked: {n} steps, one per model call (thought, action, observation)"
+
+
+def show_cached_trace(out):
+    direction, probability = parse_headline(out["answer"])
+    box = st.status("How the model worked", state="complete", expanded=True)
+    with box:
+        writer = TraceWriter()
+        for entry in out["steps"]:
+            writer.add(entry)
+        writer.conclude(out, direction, probability)
+    box.update(label=trace_label(writer.n), state="complete", expanded=True)
 
 
 def target_name(out):
@@ -207,14 +243,6 @@ def show_result(ticker, company, out, cached_at=None):
         st.caption("Computed from EDGAR XBRL data. These are the tool's numbers, not the model's retelling.")
         show_ratios(out["results"], playbook)
 
-    with st.expander(f"How the model worked: {len(out['steps'])} tool calls, then a conclusion "
-                     "(thought, action, observation)", expanded=False):
-        for i, step in enumerate(out["steps"], 1):
-            show_step(i, step)
-        show_conclusion(len(out["steps"]) + 1, target_name(out), direction, probability, answer)
-        u = out["usage"]
-        st.caption(f"{u['model_calls']} model calls, {u['prompt_tokens']:,} tokens in, {u['output_tokens']:,} tokens out.")
-
     mdna = out["results"].get("locate_mdna") or out["results"].get("get_mdna")
     with st.expander("Filings and MD&A read", expanded=False):
         for f in company["filings"]:
@@ -290,6 +318,7 @@ if st.session_state.pop("run_now", False):
     st.header(company["name"])
     hit = cached_analysis(ticker)
     if hit:
+        show_cached_trace(hit[1])                  # same place and look as a live run: trace on top, open
         show_result(ticker, company, hit[1], cached_at=hit[0])
         st.stop()
 
@@ -300,26 +329,26 @@ if st.session_state.pop("run_now", False):
 
     from src.agent import investigate          # imported here so the page loads even if the model client fails
 
-    live = st.empty()                          # live progress while the model works; cleared when it is done
-    with live.container():
-        with st.status("The model is investigating...", expanded=True) as status:
-            counter = {"n": 0}
+    # The trace is written live into this box and stays here, open, as the record of the run (Nov 5: it used to be
+    # cleared and redrawn at the bottom of the page, which was disorienting).
+    with st.status("The model is investigating...", expanded=True) as status:
+        writer = TraceWriter()
 
-            def on_event(event):
-                if event["type"] == "wait":
-                    st.write(f"Model busy (free tier limit), waiting {event['seconds']} seconds...")
-                else:
-                    counter["n"] += 1
-                    show_step(counter["n"], event)
+        def on_event(event):
+            if event["type"] == "wait":
+                st.caption(f"Model busy (free tier limit), waiting {event['seconds']} seconds...")
+            else:
+                writer.add(event)
 
-            try:
-                out = investigate(ticker, on_event=on_event, write_log=False)
-            except Exception as error:
-                status.update(label="The analysis failed", state="error")
-                st.error(f"The model could not complete the analysis ({type(error).__name__}). "
-                         "Please try again in a minute.")
-                st.stop()
-    live.empty()
+        try:
+            out = investigate(ticker, on_event=on_event, write_log=False)
+        except Exception as error:
+            status.update(label="The analysis failed", state="error")
+            st.error(f"The model could not complete the analysis ({type(error).__name__}). "
+                     "Please try again in a minute.")
+            st.stop()
+        writer.conclude(out, *parse_headline(out["answer"]))
+    status.update(label=trace_label(writer.n), state="complete", expanded=True)
 
     analysis_store()[ticker] = (time.time(), out)
     show_result(ticker, company, out)
