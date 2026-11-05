@@ -1,0 +1,201 @@
+ticker,name,industry,industry_group,target,prior_end,target_end,skip_newest,truth,momentum,reverse_momentum,contamination
+AENT,ALLIANCE ENTERTAINMENT HOLDING CORPORATION,Industrials,industrials,operating_income,2025-06-30,2026-06-30,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+AHR,"American Healthcare REIT, Inc.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+LW,"LAMB WESTON HOLDINGS, INC.",Consumer staples,consumer_staples,operating_income,2025-05-25,2026-05-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+VERX,"Vertex, Inc.",Software internet,software_internet,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+MAX,"MediaAlpha, Inc.",General,general,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+EIX,EDISON INTERNATIONAL,Utilities waste,utilities_waste,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CIEN,Ciena Corp,Semis hardware,semis_hardware,operating_income,2024-11-02,2025-11-01,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+OAK-PA,"Brookfield Oaktree Holdings, LLC",General,general,pretax_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+NI,NiSource Inc.,Utilities waste,utilities_waste,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+DAKT,"Daktronics, Inc.",General,general,operating_income,2025-04-26,2026-05-02,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+TCBI,TEXAS CAPITAL BANCSHARES INC/TX,Banks,banks,pretax_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+PGNY,"Progyny, Inc.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+EXR,EXTRA SPACE STORAGE INC.,General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+FOSL,"FOSSIL GROUP, INC.",General,general,operating_income,2024-12-28,2026-01-03,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+DKL,"DELEK LOGISTICS PARTNERS, LP",Transportation,transportation,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+DKS,"DICK'S SPORTING GOODS, INC.",Retail,retail,operating_income,2025-02-01,2026-01-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+MOD,MODINE MANUFACTURING CO,Industrials,industrials,operating_income,2025-03-31,2026-03-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+AHT,"ASHFORD HOSPITALITY TRUST, INC.",General,general,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+AMKR,"Amkor Technology, Inc.",Semis hardware,semis_hardware,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+PLOW,"DOUGLAS DYNAMICS, INC",Industrials,industrials,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+OPAD,Offerpad Solutions Inc.,General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+APH,AMPHENOL CORPORATION,Semis hardware,semis_hardware,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+LCUT,"LIFETIME BRANDS, INC.",Industrials,industrials,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+HMN,HORACE MANN EDUCATORS CORPORATION,Insurance,insurance,pretax_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+ECG,"Everus Construction Group, Inc.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+UBER,"UBER TECHNOLOGIES, INC.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK
+EXPO,"EXPONENT, INC.",General,general,operating_income,2025-01-03,2026-01-02,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+DD,"DUPONT DE NEMOURS, INC.",Materials chemicals,materials_chemicals,pretax_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CART,MAPLEBEAR INC.,General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+HAE,HAEMONETICS CORPORATION,Pharma medtech,pharma_medtech,operating_income,2025-03-29,2026-03-28,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CI,The Cigna Group,Insurance,insurance,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+EWBC,"EAST WEST BANCORP, INC.",Banks,banks,pretax_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+TTMI,"TTM TECHNOLOGIES, INC.",Semis hardware,semis_hardware,operating_income,2024-12-30,2025-12-29,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+BL,"BlackLine, Inc.",Software internet,software_internet,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CUZ,COUSINS PROPERTIES INC,General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+ROK,"Rockwell Automation, Inc",Industrials,industrials,operating_income,2024-09-30,2025-09-30,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+CPB,THE CAMPBELL'S COMPANY,Consumer staples,consumer_staples,operating_income,2024-07-28,2025-08-03,2,increase,decrease,increase,OK
+SEIC,SEI INVESTMENTS COMPANY,General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+HY,"HYSTER-YALE, INC.",Industrials,industrials,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+WES,"WESTERN MIDSTREAM PARTNERS, LP",Utilities waste,utilities_waste,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+TDAY,"USA TODAY CO., INC.",General,general,pretax_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+TXRH,"Texas Roadhouse, Inc.",Restaurants,restaurants,operating_income,2024-12-31,2025-12-30,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+KVYO,"Klaviyo, Inc.",Software internet,software_internet,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+BHE,"BENCHMARK ELECTRONICS, INC.",Semis hardware,semis_hardware,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+MEC,"Mayville Engineering Company, Inc.",Industrials,industrials,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+ACHC,"ACADIA HEALTHCARE COMPANY, INC.",General,general,pretax_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+UNM,Unum Group,Insurance,insurance,pretax_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CNC,Centene Corporation,Insurance,insurance,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+NBHC,NATIONAL BANK HOLDINGS CORP,Banks,banks,pretax_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+VRTX,VERTEX PHARMACEUTICALS INC / MA,Pharma medtech,pharma_medtech,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+UI,UBIQUITI INC.,Semis hardware,semis_hardware,operating_income,2025-06-30,2026-06-30,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+PTEN,"Patterson-UTI Energy, Inc.",Energy mining,energy_mining,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+SDRL,SEADRILL LIMITED,Energy mining,energy_mining,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CLMT,"Calumet, Inc. /DE",Energy mining,energy_mining,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+NXH,"BED BATH & BEYOND, INC.",Retail,retail,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+KNF,Knife River Corporation,Energy mining,energy_mining,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CMG,"CHIPOTLE MEXICAN GRILL, INC.",Restaurants,restaurants,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK
+NTRA,"NATERA, INC.",General,general,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+VLO,VALERO ENERGY CORP/TX,Energy mining,energy_mining,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+HIMS,"HIMS & HERS HEALTH, INC.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+ADM,ARCHER-DANIELS-MIDLAND CO,Consumer staples,consumer_staples,pretax_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+PNW,PINNACLE WEST CAPITAL CORPORATION,Utilities waste,utilities_waste,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+NVAX,"NOVAVAX, INC",Pharma medtech,pharma_medtech,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+MMI,"MARCUS & MILLICHAP, INC.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+QUAD,"QUAD/GRAPHICS, INC.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+ECHO,EchoStar Corporation,General,general,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+OTTR,OTTER TAIL CORPORATION,Utilities waste,utilities_waste,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+NEU,NEWMARKET CORPORATION,Materials chemicals,materials_chemicals,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+XYL,Xylem Inc.,Industrials,industrials,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+FRHC,FREEDOM HOLDING CORP.,General,general,pretax_income,2025-03-31,2026-03-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+LINE,"Lineage, Inc.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+CRVL,CorVel Corporation,Insurance,insurance,pretax_income,2025-03-31,2026-03-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+ZBRA,Zebra Technologies Corporation,Industrials,industrials,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+ANGI,Angi Inc.,General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+PRM,"PERIMETER SOLUTIONS, INC.",Materials chemicals,materials_chemicals,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+AM,ANTERO MIDSTREAM CORPORATION,Utilities waste,utilities_waste,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+JILL,"J.Jill, Inc.",General,general,operating_income,2025-02-01,2026-01-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+LMND,"Lemonade, Inc.",Insurance,insurance,pretax_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+RCL,ROYAL CARIBBEAN CRUISES LTD,Transportation,transportation,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+MDLZ,"Mondelez International, Inc.",Consumer staples,consumer_staples,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+WSM,"WILLIAMS-SONOMA, INC.",Retail,retail,operating_income,2025-02-02,2026-02-01,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+KFRC,Kforce Inc.,General,general,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+CENX,CENTURY ALUMINUM COMPANY,Materials chemicals,materials_chemicals,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+PEBO,PEOPLES BANCORP INC.,Banks,banks,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+PCTY,PAYLOCITY HOLDING CORPORATION,Software internet,software_internet,operating_income,2025-06-30,2026-06-30,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+HCSG,"HEALTHCARE SERVICES GROUP, INC.",General,general,pretax_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+HRI,HERC HOLDINGS INC.,General,general,pretax_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+NFE,New Fortress Energy Inc.,Utilities waste,utilities_waste,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+WWD,"WOODWARD, INC.",Industrials,industrials,pretax_income,2024-09-30,2025-09-30,1,increase,increase,decrease,OK
+TEAM,Atlassian Corporation,Software internet,software_internet,operating_income,2025-06-30,2026-06-30,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+SCI,SERVICE CORPORATION INTERNATIONAL,General,general,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+DFIN,"Donnelley Financial Solutions, Inc.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+NWSA,NEWS CORPORATION,General,general,pretax_income,2025-06-30,2026-06-30,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+BDN,Brandywine Realty Trust,General,general,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CRMT,"AMERICA’S CAR-MART, INC.",Retail,retail,pretax_income,2025-04-30,2026-04-30,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+LE,"Lands’ End, Inc.",Retail,retail,operating_income,2025-01-31,2026-01-30,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+APEI,"American Public Education, Inc.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CWH,"CAMPING WORLD HOLDINGS, INC.",Retail,retail,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+HSY,THE HERSHEY COMPANY,Consumer staples,consumer_staples,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+SLQT,"SelectQuote, Inc.",Insurance,insurance,operating_income,2025-06-30,2026-06-30,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+AAP,"ADVANCE AUTO PARTS, INC.",Retail,retail,operating_income,2024-12-28,2026-01-03,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+HALO,"HALOZYME THERAPEUTICS, INC.",Pharma medtech,pharma_medtech,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+HQY,"HEALTHEQUITY, INC.",General,general,operating_income,2025-01-31,2026-01-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+AEP,AMERICAN ELECTRIC POWER CO INC.,Utilities waste,utilities_waste,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+NKE,"NIKE, Inc.",General,general,pretax_income,2025-05-31,2026-05-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+NWBI,"NORTHWEST BANCSHARES, INC.",Banks,banks,pretax_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+CHWY,"CHEWY, INC.",Retail,retail,operating_income,2025-02-02,2026-02-01,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+COR,"Cencora, Inc.",Industrials,industrials,operating_income,2024-09-30,2025-09-30,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+ZUMZ,ZUMIEZ INC,Retail,retail,operating_income,2025-02-01,2026-01-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+IDCC,"INTERDIGITAL, INC.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+VTOL,Bristow Group Inc.,Transportation,transportation,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+ARHS,"Arhaus, Inc.",Retail,retail,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+HEI,HEICO CORPORATION,Industrials,industrials,operating_income,2024-10-31,2025-10-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+VST,Vistra Corp.,Utilities waste,utilities_waste,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CLH,"CLEAN HARBORS, INC.",Utilities waste,utilities_waste,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+FTNT,"FORTINET, INC.",Semis hardware,semis_hardware,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK
+OSCR,"Oscar Health, Inc.",Insurance,insurance,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+GTES,Gates Industrial Corporation plc,Industrials,industrials,operating_income,2024-12-28,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+DELL,Dell Technologies Inc.,Semis hardware,semis_hardware,operating_income,2025-01-31,2026-01-30,1,increase,increase,decrease,OK
+ANDE,"THE ANDERSONS, INC.",Industrials,industrials,pretax_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+UBSI,UNITED BANKSHARES INC/WV,Banks,banks,pretax_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+JNJ,Johnson & Johnson,Pharma medtech,pharma_medtech,pretax_income,2024-12-29,2025-12-28,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CINF,Cincinnati Financial Corporation,Insurance,insurance,pretax_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+SAIC,Science Applications International Corporation,Software internet,software_internet,operating_income,2025-01-31,2026-01-30,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+BKE,"BUCKLE, INC",Retail,retail,operating_income,2025-02-01,2026-01-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+CHE,CHEMED CORPORATION,General,general,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+HUM,HUMANA INC.,Insurance,insurance,pretax_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+MLR,"MILLER INDUSTRIES, INC.",Industrials,industrials,pretax_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+SOFI,"SoFi Technologies, Inc.",Banks,banks,pretax_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+STKS,"ONE GROUP HOSPITALITY, INC.",Restaurants,restaurants,operating_income,2024-12-31,2025-12-28,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+AFL,Aflac Incorporated,Insurance,insurance,pretax_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+INSP,"Inspire Medical Systems, Inc.",Pharma medtech,pharma_medtech,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+AHCO,AdaptHealth Corp.,General,general,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+BELFA,BEL FUSE INC /NJ,Semis hardware,semis_hardware,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+IVZ,Invesco Ltd.,General,general,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+PRLB,"Proto Labs, Inc.",Industrials,industrials,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+HXL,Hexcel Corporation,Materials chemicals,materials_chemicals,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+MOS,Mosaic Co,Materials chemicals,materials_chemicals,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+CATO,The Cato Corporation,Retail,retail,operating_income,2025-02-01,2026-01-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+ECL,ECOLAB INC.,Consumer staples,consumer_staples,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+AIT,"APPLIED INDUSTRIAL TECHNOLOGIES, INC.",Industrials,industrials,operating_income,2025-06-30,2026-06-30,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+HOV,HOVNANIAN ENTERPRISES INC,General,general,pretax_income,2024-10-31,2025-10-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+BAM,BROOKFIELD ASSET MANAGEMENT LTD.,General,general,pretax_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+XRAY,DENTSPLY SIRONA Inc.,Pharma medtech,pharma_medtech,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+AN,"AUTONATION, INC.",Retail,retail,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+NXST,"NEXSTAR MEDIA GROUP, INC.",General,general,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+GTLB,GITLAB INC.,Software internet,software_internet,operating_income,2025-01-31,2026-01-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+ESI,Element Solutions Inc,Materials chemicals,materials_chemicals,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+TPG,TPG Inc.,General,general,pretax_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+IP,INTERNATIONAL PAPER COMPANY,Materials chemicals,materials_chemicals,pretax_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+SABR,Sabre Corporation,Software internet,software_internet,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+FMCC,Federal Home Loan Mortgage Corporation,Banks,banks,pretax_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+HUN,Huntsman Corporation,Materials chemicals,materials_chemicals,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+OLLI,"Ollie’s Bargain Outlet Holdings, Inc.",Retail,retail,operating_income,2025-02-01,2026-01-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+IBP,"Installed Building Products, Inc.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+EVER,"EverQuote, Inc.",Software internet,software_internet,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+AMC,"AMC ENTERTAINMENT HOLDINGS, INC.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+HRTG,"Heritage Insurance Holdings, Inc.",Insurance,insurance,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+KO,COCA COLA CO,Consumer staples,consumer_staples,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK
+ENSG,"Ensign Group, Inc",General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+PH,PARKER-HANNIFIN CORPORATION,Industrials,industrials,operating_income,2025-06-30,2026-06-30,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+SIRI,SIRIUS XM HOLDINGS INC.,General,general,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+WHR,WHIRLPOOL CORP /DE/,Industrials,industrials,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+CARG,"CARGURUS, INC.",Software internet,software_internet,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+GTBIF,GREEN THUMB INDUSTRIES INC.,General,general,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+DXPE,"DXP Enterprises, Inc.",Industrials,industrials,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+NSP,"Insperity, Inc.",General,general,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+FAF,FIRST AMERICAN FINANCIAL CORPORATION,Insurance,insurance,pretax_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+IOSP,INNOSPEC INC.,Materials chemicals,materials_chemicals,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+FLEX,FLEX LTD.,Semis hardware,semis_hardware,operating_income,2025-03-31,2026-03-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+GD,GENERAL DYNAMICS CORPORATION,Industrials,industrials,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK
+DIN,"Dine Brands Global, Inc.",Restaurants,restaurants,pretax_income,2024-12-31,2025-12-28,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+EME,"EMCOR Group, Inc.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+KALU,KAISER ALUMINUM CORPORATION,Materials chemicals,materials_chemicals,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+TTWO,"TAKE-TWO INTERACTIVE SOFTWARE, INC.",Software internet,software_internet,operating_income,2025-03-31,2026-03-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+BWIN,"The Baldwin Insurance Group, Inc.",Insurance,insurance,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+ATR,"AptarGroup, Inc.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+GEL,GENESIS ENERGY LP,Transportation,transportation,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+TTI,"TETRA Technologies, Inc.",Energy mining,energy_mining,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CNTY,"CENTURY CASINOS, INC.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+CDP,COPT DEFENSE PROPERTIES,General,general,pretax_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+AFG,"AMERICAN FINANCIAL GROUP, INC.",Insurance,insurance,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+SMG,Scotts Miracle-Gro Co,Materials chemicals,materials_chemicals,operating_income,2024-09-30,2025-09-30,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+REAL,"TheRealReal, Inc.",Retail,retail,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+ATEC,"ALPHATEC HOLDINGS, INC.",Pharma medtech,pharma_medtech,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+AESI,Atlas Energy Solutions Inc.,Energy mining,energy_mining,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+MGM,MGM Resorts International,General,general,operating_income,2024-12-31,2025-12-31,1,decrease,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+JBGS,JBG SMITH PROPERTIES,General,general,pretax_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+CCC,CCC Intelligent Solutions Holdings Inc.,Software internet,software_internet,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+ORA,"Ormat Technologies, Inc.",Utilities waste,utilities_waste,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+CRSR,"Corsair Gaming, Inc.",Semis hardware,semis_hardware,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+PAYO,Payoneer Global Inc.,General,general,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+PRG,"PROG HOLDINGS, INC.",General,general,operating_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+WING,WINGSTOP INC.,Restaurants,restaurants,operating_income,2024-12-28,2025-12-27,1,increase,increase,decrease,OK
+AIZ,"Assurant, Inc.",Insurance,insurance,pretax_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+OPLN,"OPENLANE, Inc.",Retail,retail,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+DSGR,"DISTRIBUTION SOLUTIONS GROUP, INC.",Industrials,industrials,operating_income,2024-12-31,2025-12-31,1,increase,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+KSS,KOHL’S CORP,Retail,retail,operating_income,2025-02-01,2026-01-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY
+TROX,TRONOX HOLDINGS PLC,Materials chemicals,materials_chemicals,operating_income,2024-12-31,2025-12-31,1,decrease,increase,decrease,OK_BUT_UNKNOWN_COMPANY
+HGV,Hilton Grand Vacations Inc.,General,general,pretax_income,2024-12-31,2025-12-31,1,increase,decrease,increase,OK_BUT_UNKNOWN_COMPANY

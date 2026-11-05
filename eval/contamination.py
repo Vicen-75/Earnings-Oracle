@@ -53,23 +53,48 @@ def _to_date(text):
         return None
 
 
-def full_year_probe(name, fiscal_year_end):
+def full_year_probe(name, fiscal_year_end, metric="operating income"):
     """Ask the model, from memory only, what happened in the full fiscal year."""
-    prompt = (f"From memory only, what operating income did {name} report for the fiscal year "
+    prompt = (f"From memory only, what {metric} did {name} report for the fiscal year "
               f"ending {fiscal_year_end}, and did it increase or decrease versus the previous fiscal year? "
               f"If you do not have reliable knowledge of that specific year, say so. Do not guess.")
     raw = ask_gemini(prompt, response_schema=MemoryCheck, temperature=0)
     return MemoryCheck.model_validate_json(raw)
 
 
-def quarter_probe(name, fiscal_year_end, prior_year_end):
+def quarter_probe(name, fiscal_year_end, prior_year_end, metric="operating income"):
     """Ask the model, from memory only, which QUARTERS of the target fiscal year it already knows."""
     prompt = (f"From memory only. {name} has a fiscal year that started the day after {prior_year_end} and ended {fiscal_year_end}. "
               f"List every quarterly earnings result inside that fiscal year that you reliably remember "
-              f"(quarter label, quarter end date, operating income). Also state the most recent quarter end date, from any year, "
+              f"(quarter label, quarter end date, {metric}). Also state the most recent quarter end date, from any year, "
               f"for which you reliably remember this company's results. If you remember nothing inside that fiscal year, say so. Do not guess.")
     raw = ask_gemini(prompt, response_schema=QuarterCheck, temperature=0)
     return QuarterCheck.model_validate_json(raw)
+
+
+def probe_verdict(name, target_end, prior_end, truth, metric="operating income"):
+    """The three memory probes and the verdict for one company and target year.
+    Returns (verdict, (full_year, quarters, control)). Used by check_company and by eval/build_test_set.py (Nov 6)."""
+    year = full_year_probe(name, target_end, metric)
+    quarters = quarter_probe(name, target_end, prior_end, metric)
+    control = full_year_probe(name, prior_end, metric)
+
+    full_year_leak = year.knows_result and year.direction == truth
+    # --- Vicente: fix (Oct 21). Any remembered result AFTER the prior year end is a leak, including results
+    # after the target year. If the model gives a date we cannot read, we play safe and count it as a leak.
+    latest_text = quarters.latest_period_you_know
+    latest = _to_date(latest_text)
+    date_leak = bool(latest_text) and (latest is None or latest > date.fromisoformat(prior_end))
+    quarter_leak = quarters.knows_any_quarter or len(quarters.quarters_known) > 0 or date_leak
+    if full_year_leak:
+        verdict = "CONTAMINATED_FULL_YEAR"
+    elif quarter_leak:
+        verdict = "CONTAMINATED_QUARTERS"
+    elif not control.knows_result:
+        verdict = "OK_BUT_UNKNOWN_COMPANY"     # model has not heard of it even for the control year; fine to use, but note it
+    else:
+        verdict = "OK"
+    return verdict, (year, quarters, control)
 
 
 def check_company(ticker, target_end=None, target_calendar_year=2025, verbose=True):
@@ -96,25 +121,8 @@ def check_company(ticker, target_end=None, target_calendar_year=2025, verbose=Tr
     prior_end = ends[ends.index(target_end) + 1]
     truth = "increase" if income[target_end] > income[prior_end] else "decrease"
 
-    year = full_year_probe(name, target_end)
-    quarters = quarter_probe(name, target_end, prior_end)
-    control = full_year_probe(name, prior_end)
-
-    full_year_leak = year.knows_result and year.direction == truth
-    # --- Vicente: fix (Oct 21). Any remembered result AFTER the prior year end is a leak, including results
-    # after the target year. If the model gives a date we cannot read, we play safe and count it as a leak.
-    latest_text = quarters.latest_period_you_know
-    latest = _to_date(latest_text)
-    date_leak = bool(latest_text) and (latest is None or latest > date.fromisoformat(prior_end))
-    quarter_leak = quarters.knows_any_quarter or len(quarters.quarters_known) > 0 or date_leak
-    if full_year_leak:
-        verdict = "CONTAMINATED_FULL_YEAR"
-    elif quarter_leak:
-        verdict = "CONTAMINATED_QUARTERS"
-    elif not control.knows_result:
-        verdict = "OK_BUT_UNKNOWN_COMPANY"     # model has not heard of it even for the control year; fine to use, but note it
-    else:
-        verdict = "OK"
+    verdict, probes = probe_verdict(name, target_end, prior_end, truth)
+    year, quarters, control = probes
 
     row = {
         "ticker": ticker, "name": name, "target_end": target_end, "prior_end": prior_end,

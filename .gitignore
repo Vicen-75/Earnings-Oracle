@@ -4,3 +4,4 @@
 cache/
 .streamlit/secrets.toml
 .venv/
+eval/app_runs.jsonl

@@ -3,3 +3,4 @@ requests
 google-genai
 pydantic
 beautifulsoup4
+streamlit-flow-component==1.6.1
