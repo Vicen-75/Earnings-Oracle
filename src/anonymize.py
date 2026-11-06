@@ -81,8 +81,31 @@ def find_brand_names(text, generate):
     except Exception as error:                                   # API error or unparseable answer
         return [], f"failed ({type(error).__name__})"
     # keep only names that really appear in the text and are long enough to be specific
-    found = [n.strip() for n in names if len(n.strip()) >= 3 and n.strip().lower() in text.lower()]
-    return sorted(set(found), key=len, reverse=True), "ok"
+    return _keep_specific(names, text), "ok"
+
+
+def _brand_pattern(brand):
+    """Several words: any case. One word: exactly as written, so the brand 'Space' does not erase the word 'space'."""
+    if len(brand.split()) == 1:
+        return re.compile(rf"\b{re.escape(brand)}\b")
+    return re.compile(rf"\b{re.escape(brand)}\b", re.IGNORECASE)
+
+
+def _keep_specific(names, text):
+    """Drop names that are ordinary words (Nov 6, first run on the 20: ITW's scan returned 'Company' and LMT's
+    'Space', which erased those words everywhere). A one-word name is kept only if it appears in the text as
+    written more often than in lower case; our own replacement words are never kept."""
+    kept = set()
+    for n in (n.strip() for n in names):
+        if len(n) < 3 or n.lower() in {"company", "the company", "product", "products"} or n.lower() not in text.lower():
+            continue
+        if len(n.split()) == 1 and n != n.lower():
+            as_written = len(re.findall(rf"\b{re.escape(n)}\b", text))
+            lower = len(re.findall(rf"\b{re.escape(n.lower())}\b", text))
+            if as_written <= lower:
+                continue
+        kept.add(n)
+    return sorted(kept, key=len, reverse=True)
 
 
 class Anonymizer:
@@ -130,7 +153,7 @@ class Anonymizer:
         for pattern in self._patterns:
             text = pattern.sub(COMPANY, text)
         for brand in self.brands:
-            text = re.sub(rf"\b{re.escape(brand)}\b", PRODUCT, text, flags=re.IGNORECASE)
+            text = _brand_pattern(brand).sub(PRODUCT, text)
         for t in self.tickers:
             text = re.sub(rf"\b{re.escape(t)}\b", TICKER_ALIAS, text)          # case-sensitive: 'HD' not 'hd'
         if self.cik:
@@ -148,7 +171,7 @@ class Anonymizer:
             if n:
                 found[name] = n
         for term in self.brands:
-            n = len(re.findall(rf"\b{re.escape(term)}\b", text, flags=re.IGNORECASE))
+            n = len(_brand_pattern(term).findall(text))
             if n:
                 found[term] = n
         for t in self.tickers:
