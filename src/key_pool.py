@@ -96,6 +96,9 @@ class KeyPool:
         self.keys = [Key(i + 1, k) for i, k in enumerate(api_keys)]
         self.lock = threading.Lock()
         self.current = contextvars.ContextVar("gemini_key", default=None)
+        # --- Vicente (issue #55): a meter per analysis, so the cost counts EVERY call of the run (main agent, MD&A
+        # locator, anonymizer brand scan) and the thinking tokens, which Google bills as output.
+        self.meter = contextvars.ContextVar("usage_meter", default=None)
 
     # --- choosing a key ----------------------------------------------------------------------------------------------
     def _best(self, exclude=None):
@@ -118,12 +121,18 @@ class KeyPool:
             key = self._best()
             key.active += 1
         token = self.current.set(key)
+        meter_token = self.meter.set({"model_calls": 0, "prompt_tokens": 0, "output_tokens": 0, "thinking_tokens": 0})
         try:
             yield key
         finally:
             with self.lock:
                 self.current.get().active -= 1        # the run may have moved to another key
             self.current.reset(token)
+            self.meter.reset(meter_token)
+
+    def usage(self):
+        """Everything the current analysis has used so far, across all its model calls (issue #55)."""
+        return dict(self.meter.get() or {})
 
     def _move(self, old):
         """Move the current run from a key that hit its limit to the key with the most room."""
@@ -141,9 +150,16 @@ class KeyPool:
 
     def _record(self, key, response):
         tokens = 0
-        if getattr(response, "usage_metadata", None):
-            tokens = (response.usage_metadata.prompt_token_count or 0) + \
-                     (response.usage_metadata.candidates_token_count or 0)
+        meter = self.meter.get()
+        u = getattr(response, "usage_metadata", None)
+        if u:
+            tokens = (u.prompt_token_count or 0) + (u.candidates_token_count or 0)
+        if meter is not None:
+            meter["model_calls"] += 1
+            if u:
+                meter["prompt_tokens"] += u.prompt_token_count or 0
+                meter["output_tokens"] += u.candidates_token_count or 0
+                meter["thinking_tokens"] += getattr(u, "thoughts_token_count", 0) or 0
         with self.lock:
             key.calls.append((time.time(), tokens))
 
