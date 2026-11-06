@@ -21,6 +21,7 @@ from src import ratio_directory
 
 from src import mdna as mdna_impl                      # real MD&A extractor (Nicolas)
 from src.locate_mdna import locate_mdna                # fallback: a small agent finds the MD&A via the contents
+from src.anonymize import Anonymizer, TICKER_ALIAS       # issue #27 (Vicente): hides the company from the model
 try:
     from src import ratios as ratio_impl               # noqa: F401  (issue: ratio calculator, Vicente)
 except ImportError:
@@ -211,10 +212,22 @@ def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, 
         temperature=0,
         thinking_config=types.ThinkingConfig(thinking_level=THINKING_LEVEL),
     )
-    contents = [types.Content(role="user", parts=[types.Part(text=f"Ticker: {ticker}")])]
     log, results, calls, draft = [], {}, 0, None
     tools = _tools_for_run(skip_newest)
     usage = {"prompt_tokens": 0, "output_tokens": 0, "model_calls": 0}
+
+    def brand_scan_call(model, text, cfg):
+        """The anonymizer's one model call (brand names), counted in usage so the cost per analysis is complete."""
+        response = _generate(text, cfg, on_event)
+        usage["model_calls"] += 1
+        if response.usage_metadata:
+            usage["prompt_tokens"] += response.usage_metadata.prompt_token_count or 0
+            usage["output_tokens"] += response.usage_metadata.candidates_token_count or 0
+        return response
+
+    # Anonymized run: the model is told the ticker is "COMPANY"; the tools translate it back (issue #27)
+    anon = Anonymizer(ticker, generate=brand_scan_call) if anonymize else None
+    contents = [types.Content(role="user", parts=[types.Part(text=f"Ticker: {TICKER_ALIAS if anon else ticker}")])]
 
     def finish(answer):
         if write_log:
@@ -254,11 +267,11 @@ def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, 
             args = dict(call.args or {})
             reason = args.pop("reason", "")
             try:
-                result = tools[call.name](**args)
+                result = tools[call.name](**(anon.unalias(args) if anon else args))
             except Exception as error:                                # a crashing tool must not crash the run
                 result = {"error": f"{type(error).__name__}: {error}"}
-            if anonymize:
-                result = _anonymize(result)                           # placeholder until src/anonymize.py exists
+            if anon:
+                result = anon.scrub(result)                           # names, ticker, CIK, brands removed
             entry = {"model_call": usage["model_calls"],     # which model turn asked for this (one step per turn)
                      "reason": reason, "tool": call.name, "args": args,
                      "ok": not (isinstance(result, dict) and "error" in result),
@@ -297,13 +310,6 @@ def run(ticker, anonymize=False, prompt=DEFAULT_PROMPT, verbose=True):
                 print(f"      [locator, FY {sub['filing']}] observe: {sub['observation']}")
         print(out["answer"])
     return out["answer"], out["steps"]
-
-
-def _anonymize(result):
-    """Placeholder: the real one (issue: anonymization) strips company name, ticker and product names."""
-    if isinstance(result, dict):
-        return {k: ("[redacted]" if k in ("name", "ticker") else v) for k, v in result.items()}
-    return result
 
 
 def _write_log(ticker, log, answer, usage, anonymize, prompt, path=LOG_PATH, skip_newest=None):
