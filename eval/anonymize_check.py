@@ -22,6 +22,7 @@ from src.anonymize import Anonymizer
 from src.key_pool import pool
 from src.llm import MODEL
 from src.mdna import get_mdna
+from src.locate_mdna import locate_mdna
 
 TEST_SET = Path("eval/test_set.csv")
 OUT = Path("eval/anonymize_check.csv")
@@ -61,8 +62,10 @@ def check(ticker, do_guess=False):
     if "error" in card:
         return {**row, "status": f"no card: {card['error']}"}
     mdna = get_mdna(card["cik"], skip_newest=SKIP_NEWEST)
+    if "error" in mdna:                                   # same fallback the agent uses (MCD on Nov 6)
+        mdna = locate_mdna(card["cik"], skip_newest=SKIP_NEWEST)
     if "error" in mdna:
-        return {**row, "status": "MD&A not found (locator not run here)"}
+        return {**row, "status": "MD&A not found, even with the locator"}
     seen = [anon.scrub(card), anon.scrub(mdna)]
     leaks = anon.leaks(seen)
     text = " ".join(f["text"] for f in seen[1]["filings"])
