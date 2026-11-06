@@ -26,6 +26,35 @@ TOKENS_PER_MINUTE = 250_000       # per project, free tier: assumed, verify in A
 REST_SECONDS = 60                 # a key that hit its limit is not used again for this long
 WAIT_SECONDS = 15                 # wait when every key is resting (same as the old retry policy)
 MAX_ATTEMPTS = 6
+SECONDS_BETWEEN_CALLS = 0.5       # Nov 6: at least this long between any two model calls, across all keys, so a batch
+                                  # of runs starting together does not hit Google as one burst
+
+
+class ModelBusy(RuntimeError):
+    """Raised when every retry failed. kind: "daily_quota" (the keys' free daily requests are used up),
+    "rate_limit" (too many requests this minute), or "overloaded" (Google's side). The app words its message on it.
+    A RuntimeError, so code that caught the old "gave up after repeated retries" error still catches this."""
+
+    def __init__(self, kind):
+        self.kind = kind
+        super().__init__(f"gave up after repeated retries ({kind})")
+
+
+def _is_daily_quota(error):
+    return "PerDay" in str(error)                 # Gemini names the exhausted quota, e.g. ...RequestsPerDay...
+
+
+_reported = set()
+
+
+def _report_limit(key, error):
+    """Print, once per key and limit, which Google quota a 429 named (e.g. ...InputTokensPerModelPerMinute...)."""
+    import re
+    names = re.findall(r"quota(?:_?[Ii]d|Metric)['\"]?\s*[:=]\s*['\"]?([A-Za-z0-9_./-]+)", str(error))
+    name = names[0] if names else str(error)[:200].replace("\n", " ")
+    if (key.label, name) not in _reported:
+        _reported.add((key.label, name))
+        print(f"   [{key.label}] limit hit: {name}")
 
 
 def _is_rate_limit(error):
@@ -82,6 +111,8 @@ class KeyPool:
         self.keys = [Key(i + 1, k) for i, k in enumerate(api_keys)]
         self.lock = threading.Lock()
         self.current = contextvars.ContextVar("gemini_key", default=None)
+        self.pace_lock = threading.Lock()
+        self.last_call = 0.0
 
     # --- choosing a key ----------------------------------------------------------------------------------------------
     def _best(self, exclude=None):
@@ -138,6 +169,7 @@ class KeyPool:
         """client.models.generate_content on the run's key, with failover between keys and waits when all are busy."""
         if not self.keys:
             raise RuntimeError("No Gemini API key configured (GEMINI_API_KEYS or GEMINI_API_KEY).")
+        problem = "rate_limit"
         for attempt in range(MAX_ATTEMPTS):
             key = self.current.get()
             if key is None:                               # a call outside pool.run() (command line helpers)
@@ -150,30 +182,44 @@ class KeyPool:
                 if not other.resting(now) and (key.resting(now) or not other.full(now)):
                     key = self._move(key) if self.current.get() is key else other
             if key.resting(time.time()):                  # every key is resting: wait, then try again
-                self._wait(on_event)
+                self._wait(on_event, "every key rate-limited" if problem == "rate_limit" else problem)
                 continue
+            self._pace()
             try:
                 response = key.client.models.generate_content(model=model, contents=contents, config=config)
             except Exception as error:
                 if _is_rate_limit(error):
+                    _report_limit(key, error)
+                    problem = "daily_quota" if _is_daily_quota(error) else "rate_limit"
                     if len(self.keys) == 1:               # one key: the old policy, wait and retry the same key
-                        self._wait(on_event)
+                        self._wait(on_event, problem)
                     else:
                         self._rest(key)                   # the next attempt moves to another key (or waits
                     continue                              # if every key is resting)
                 if _is_overload(error):
-                    self._wait(on_event)
+                    problem = "overloaded"
+                    self._wait(on_event, problem)
                     continue
                 raise
             self._record(key, response)
             return response
-        raise RuntimeError("gave up after repeated retries")
+        raise ModelBusy(problem)
+
+    def _pace(self):
+        """Space out call starts across all keys and threads."""
+        with self.pace_lock:
+            wait = SECONDS_BETWEEN_CALLS - (time.time() - self.last_call)
+            if wait > 0:
+                time.sleep(wait)
+            self.last_call = time.time()
 
     @staticmethod
-    def _wait(on_event):
-        print(f"   (rate limit or overload, waiting {WAIT_SECONDS} seconds...)")
+    def _wait(on_event, reason="rate_limit"):
+        labels = {"overloaded": "Google overloaded (503)", "daily_quota": "daily quota used up",
+                  "rate_limit": "rate limit", "every key rate-limited": "every key rate-limited"}
+        print(f"   ({labels.get(reason, reason)}, waiting {WAIT_SECONDS} seconds...)")
         if on_event:
-            on_event({"type": "wait", "seconds": WAIT_SECONDS})
+            on_event({"type": "wait", "seconds": WAIT_SECONDS, "reason": reason})
         time.sleep(WAIT_SECONDS)
 
     def status(self):
