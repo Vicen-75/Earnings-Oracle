@@ -33,3 +33,19 @@ The FY2023 and FY2024 10-K primary documents from EDGAR, by accession number, li
 ## Before-and-after (§5.5 element 4)
 
 One prompt change, `PROMPT_V1` to `PROMPT_V2`, measured on the same 20, anonymized. Nothing else moves between the two runs.
+
+
+## Dated notes (changes after Oct 22)
+
+The text above is the metric as fixed on Oct 22 and is left unchanged. Each note below says what changed, why, and where it is implemented.
+
+### Nov 6, 2026
+
+1. **Two test sets; the reported result moves to 200 companies.** The first backtest on the 20 (Nov 5, prompt V5, named) scored 15/20 against 11/20 for always-increase and 8/20 for momentum. With n = 20 that is not evidence: only 6 companies separated the model from always-increase, and the 95% interval on accuracy is about ±19 points. The 20 in `eval/test_set.csv` become the **development set** (for trying prompt changes); the reported result is a **200-company test set** (`eval/test_set_200.csv`), with the design, gates and analysis fixed in advance in `docs/test_plan.md`. Everything above that says "the same 20" now applies to the 200.
+2. **How test companies are chosen.** Hand-picked S&P 500 and mid-cap candidates are replaced by a random draw: US filers with revenue of at least $500M in 2024, from the SEC frames API, shuffled with seed 883 (`eval/universe.csv`, committed before any model run). The same gates apply: data available, and the contamination test (full year, quarters, control year). Every company tried and the reason it passed or failed is in `eval/sample_checks.csv`.
+3. **Target year, defined by date.** "FY2025" means the fiscal year ending between 2025-07-01 and 2026-06-30, so every company has exactly one. Inputs are the 10-Ks before it, selected by date: every tool hides the target year's 10-K and anything filed after it (`skip_newest`, stored per company), instead of listing accession numbers.
+4. **Target metric for banks and insurers.** The substitute is fixed in code: pre-tax income from continuing operations when a company reports no `OperatingIncomeLoss` (`edgar.choose_target`), used for inputs, truth and baselines alike, and stored per company in the `target` column. Banks and insurers stay in (39 of the 200 use pre-tax income).
+5. **Baselines.** The ratio-only `baseline_direction()` was not built. The ratio-only comparison is **momentum** instead: a fixed rule on the target metric, with no model call (next year moves the way last year did; `src/baseline.py`). **Reverse momentum** is added, because direction reversed in 12 of the first 20 companies. The model "beats the baselines" only if it is significantly better than all three on the same companies (exact McNemar test, 0.05), as set in `docs/test_plan.md`.
+6. **Named before anonymized.** The anonymizer is not built yet (issue #27), so the first runs are named. The headline metric stays anonymized accuracy; it will be reported, with the named-vs-anonymized gap, once #27 and #41 are done.
+7. **Before-and-after.** `PROMPT_V1` to `PROMPT_V2` is superseded: the prompts are now `TOOL_SYSTEM_V3` to `V5` (`src/prompts.py`, V5 the default). The comparison is V5 against a V6, tried on the 20 and measured once on the 200 (issue #45).
+8. **Robustness set.** The invalid-ticker case now expects a helpful answer (suggesting the company the user likely meant) instead of only an error (issue #50).
