@@ -230,6 +230,7 @@ def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, 
     contents = [types.Content(role="user", parts=[types.Part(text=f"Ticker: {TICKER_ALIAS if anon else ticker}")])]
 
     def finish(answer):
+        usage["billed"] = pool.usage()            # every call of the run, thinking tokens included (issue #55)
         if write_log:
             _write_log(ticker, log, answer, usage, anonymize, prompt, log_path or LOG_PATH, skip_newest)
         return {"answer": answer, "steps": log, "results": results, "usage": usage, "prompt": prompt}
