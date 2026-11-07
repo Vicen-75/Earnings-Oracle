@@ -45,7 +45,12 @@ def load_company(ticker):
     if not filings:
         return {"error": f"{name} does not file 10-K reports (it may be a foreign company that files a 20-F), "
                          "so there is nothing for the model to read. Answer: no data found."}
-    return {"name": name, "cik": cik, "filings": filings, "ratios": compute_general_ratios(cik)}
+    try:                                            # issue #46: the no-model baseline, shown next to the answer
+        from src.baseline import momentum
+        baseline = momentum(cik, filings[0]["fiscal_year_end"])
+    except Exception as error:                      # never block the analysis over the baseline
+        baseline = {"direction": None, "reason": f"could not be computed ({type(error).__name__})"}
+    return {"name": name, "cik": cik, "filings": filings, "ratios": compute_general_ratios(cik), "baseline": baseline}
 
 
 @st.cache_resource
@@ -222,6 +227,46 @@ def show_ratios(result, playbook):
         st.caption(f"Asked for but not in the directory: {', '.join(ratios['unknown_ratios'])}")
 
 
+def show_failure(error):
+    """Say why an analysis failed, in words a classmate can act on (Nov 6: the reason used to sit inside the collapsed
+    trace box, and 'try again in a minute' was wrong when the daily quota was gone)."""
+    kind = getattr(error, "kind", None)                 # src.key_pool.ModelBusy
+    if kind == "daily_quota":
+        st.error("The app has used up today's free model quota, so it cannot start new analyses until the quota "
+                 "resets (midnight Pacific time). Analyses run earlier today are still available: try the examples "
+                 "above.")
+    elif kind == "rate_limit":
+        st.error("The model is getting too many requests right now (free-tier limit per minute). "
+                 "Please try again in a minute or two.")
+    elif kind == "overloaded":
+        st.error("Google's model service is overloaded right now. Please try again in a few minutes.")
+    else:
+        st.error(f"The model could not complete the analysis ({type(error).__name__}). Please try again in a minute.")
+
+
+def show_baseline(company, direction):
+    """Issue #46 (Nov 6): the momentum baseline next to the model's verdict, as the proposal promised.
+    A fixed rule on two numbers, no model call: next year moves the same way as last year."""
+    base = company.get("baseline")               # missing in results cached before this change
+    if not base:
+        return
+    if not base.get("direction"):
+        st.caption(f"Baseline (no model): not available, {base.get('reason', 'unknown reason')}.")
+        return
+    arrow = "▲" if base["direction"] == "increase" else "▼"
+    metric = {"operating_income": "operating income", "pretax_income": "pre-tax income"}.get(base.get("target"),
+                                                                                              "the target metric")
+    verb = "rose" if base["direction"] == "increase" else "did not rise"
+    older, newer = sorted(base["years"])
+    agree = ""
+    if direction:
+        agree = " The model **agrees**." if direction == base["direction"] else \
+                " The model **disagrees** with the trend."
+    st.markdown(f"**Baseline (no model): {arrow} {base['direction']}.** Momentum rule: next year moves the way last year "
+                f"did. {metric.capitalize()} {verb} from ${base['previous'] / 1e9:,.2f}B (FY ending {older}) to "
+                f"${base['latest'] / 1e9:,.2f}B (FY ending {newer}).{agree}")
+
+
 def show_result(ticker, company, out, cached_at=None):
     answer = out["answer"]
     direction, probability = parse_headline(answer)
@@ -231,6 +276,7 @@ def show_result(ticker, company, out, cached_at=None):
         arrow = "▲" if direction == "increase" else "▼"
         label = f"{arrow} {target_name(out)} will {direction}"
         st.subheader(label + (f" (probability {probability:.0%})" if probability is not None else ""))
+        show_baseline(company, direction)
     if cached_at:
         st.caption(f"Result from {time.strftime('%H:%M', time.localtime(cached_at))} (cached, no new model run).")
 
@@ -584,11 +630,16 @@ def analyze_tab():
                     try:
                         out = investigate(ticker, on_event=on_event, log_path=APP_LOG_PATH)  # git-ignored record
                     except Exception as error:
-                        status.update(label="The analysis failed", state="error")
-                        st.error(f"The model could not complete the analysis ({type(error).__name__}). "
-                                 "Please try again in a minute.")
-                        st.stop()
-                    writer.conclude(out, *parse_headline(out["answer"]))
+                        failure = error
+                    else:
+                        failure = None
+                    if failure is not None:
+                        status.update(label="The analysis failed", state="error", expanded=False)
+                    else:
+                        writer.conclude(out, *parse_headline(out["answer"]))
+                if failure is not None:
+                    show_failure(failure)                      # below the box, where people see it (Nov 6)
+                    st.stop()
                 status.update(label=trace_label(writer.n), state="complete", expanded=True)
         except TimeoutError:
             line_box.empty()
