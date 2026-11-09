@@ -1,0 +1,6 @@
+ticker,source,complete_count,model_calls,prompt_tokens,output_tokens,thinking_tokens,seconds,cost_usd
+CAT,fresh run,True,4,120975,1515,1413,17.5,0.03464
+HD,fresh run,True,5,63611,1490,901,44.4,0.01949
+ADBE,fresh run,True,4,55268,1381,1098,23.5,0.01754
+JPM,fresh run,True,12,273404,1671,1288,68.6,0.07279
+MCD,fresh run,True,10,97784,1704,955,84.3,0.02843
