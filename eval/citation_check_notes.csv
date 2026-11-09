@@ -1,0 +1,6 @@
+ticker,quote_no,verdict,note
+PTEN,2,stitched,"First sentence verbatim from the MD&A; the $885 million goodwill charge is reworded from a later MD&A sentence. Facts match the filing."
+AEP,2,paraphrase,"From the strategy section, outside the MD&A. 'In November 2024, AEP announced' was added; the same 10-K gives that date elsewhere."
+ARHS,1,paraphrase,"Verbatim except for an editorial insertion, '[in net revenue]'."
+HRTG,3,paraphrase,"Light rewording ('net combined ratio of 94.2%' became 'was 94.2% for the year ended December 31, 2024'); all figures match."
+BELFA,3,wrong_number,"Says 2023 inventory turns were 2.7; the filing says 3.1. 2.7 is the 2022 figure from the next sentence. The error understates the decline, so it did not push the call toward decrease."
