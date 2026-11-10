@@ -12,12 +12,28 @@
 #   - pool.generate() makes every model call. If the run's key answers "rate limited", that key rests for a minute and
 #     the run moves to another key; only when every key is resting does it wait 15 seconds and retry.
 #   - Usage is counted per key from the model's own token counts, so the choice is based on what was really spent.
+#
+# Nov 10 (Javier, load test in eval/load_test.py): 6 analyses at once ran cleanly, 12 at once failed twice on every key
+# at the same moment with "overloaded" and an unnamed "resource exhausted". Google throttles our total free-tier traffic,
+# not each project, so more keys do not buy more analyses at once. Changes:
+#   - Only ACTIVE_KEYS keys (default 4) are used at a time: the first 4 in the secrets that still have daily quota.
+#     When a key runs out of its daily quota (Google names a ...PerDay limit) it is retired until midnight Pacific and
+#     the next unused key takes its place (rolling replacement), so 4 keys stay active until all are spent.
+#     Retirements are saved in cache/key_state.json, so a restarted run does not retry spent keys.
+#   - An unnamed 429 or a 503 means Google is busy, not that the key is spent: the run stays on its key and waits
+#     5, 10, 20, 40, then 60 seconds between tries. Batch runs (pool.patient = True: the backtest and the test-set
+#     builder) keep trying for up to PATIENT_SECONDS; the app gives up after about a minute.
+#   - A named per-minute limit keeps the old behavior: the key rests a minute and the run moves to another active key.
 import contextvars
+import json
 import os
+import re
 import threading
 import time
 from collections import deque
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from google import genai
 
@@ -25,7 +41,12 @@ REQUESTS_PER_MINUTE = 15          # per project, free tier (AI Studio, Oct 2026)
 TOKENS_PER_MINUTE = 250_000       # per project, free tier: assumed, verify in AI Studio
 REST_SECONDS = 60                 # a key that hit its limit is not used again for this long
 WAIT_SECONDS = 15                 # wait when every key is resting (same as the old retry policy)
-MAX_ATTEMPTS = 6
+MAX_ATTEMPTS = 6                  # named per-minute limits, as before
+ACTIVE_KEYS = 4                   # keys used at a time (Nov 10); override with ACTIVE_KEYS in the secrets or environment
+BACKOFF_SECONDS = [5, 10, 20, 40, 60]   # waits on the same key when Google is busy; then 60 s each
+PATIENT_SECONDS = 15 * 60         # batch runs keep trying this long on a busy Google before giving up
+APP_BUSY_SECONDS = 60             # the app gives up sooner, so a visitor is not left waiting
+STATE_PATH = Path("cache/key_state.json")
 SECONDS_BETWEEN_CALLS = 0.5       # Nov 6: at least this long between any two model calls, across all keys, so a batch
                                   # of runs starting together does not hit Google as one burst
 
@@ -55,6 +76,30 @@ def _report_limit(key, error):
     if (key.label, name) not in _reported:
         _reported.add((key.label, name))
         print(f"   [{key.label}] limit hit: {name}")
+
+
+def _names_a_quota(error):
+    """True when the 429 says which quota ran out. The unnamed 'Resource has been exhausted' means Google is busy."""
+    return bool(re.search(r"quota(?:_?[Ii]d|Metric)|PerMinute|PerDay|free_tier", str(error)))
+
+
+def pacific_day():
+    """Today's date in California, where the free daily quota resets at midnight."""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
+    except Exception:                                   # no time zone data (Windows without tzdata): Pacific standard
+        return (datetime.now(timezone.utc) - timedelta(hours=8)).date().isoformat()
+
+
+def _setting(name, default):
+    try:
+        import streamlit as st
+        value = st.secrets.get(name)
+    except Exception:
+        value = None
+    value = value or os.environ.get(name)
+    return int(value) if value else default
 
 
 def _is_rate_limit(error):
@@ -90,6 +135,7 @@ class Key:
         self.label = f"key {number}"
         self.client = genai.Client(api_key=api_key)
         self.active = 0                                  # analyses currently using this key
+        self.retired_on = None                           # Pacific date its daily quota ran out
         self.calls = deque()                             # (time, tokens) of calls in the last minute
         self.resting_until = 0.0
 
@@ -101,6 +147,9 @@ class Key:
     def resting(self, now):
         return now < self.resting_until
 
+    def retired(self):
+        return self.retired_on == pacific_day()
+
     def full(self, now):
         requests, tokens = self.last_minute(now)
         return requests >= REQUESTS_PER_MINUTE or tokens >= TOKENS_PER_MINUTE
@@ -109,7 +158,10 @@ class Key:
 class KeyPool:
     def __init__(self, api_keys):
         self.keys = [Key(i + 1, k) for i, k in enumerate(api_keys)]
+        self.active_size = _setting("ACTIVE_KEYS", ACTIVE_KEYS)
+        self.patient = False                             # batch scripts set True: wait out a busy Google for longer
         self.lock = threading.Lock()
+        self._load_state()
         self.current = contextvars.ContextVar("gemini_key", default=None)
         self.pace_lock = threading.Lock()
         self.last_call = 0.0
@@ -117,12 +169,59 @@ class KeyPool:
         # locator, anonymizer brand scan) and the thinking tokens, which Google bills as output.
         self.meter = contextvars.ContextVar("usage_meter", default=None)
 
+    # --- daily quota: which keys are active ---------------------------------------------------------------------------
+    def _tail(self, key):
+        try:
+            return key.client._api_client.api_key[-4:]
+        except Exception:
+            return key.label
+
+    def _load_state(self):
+        """Keys retired today, from an earlier run (matched by the key's last 4 characters, never the full key)."""
+        try:
+            state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        if state.get("day") != pacific_day():
+            return
+        for key in self.keys:
+            if self._tail(key) in state.get("retired", []):
+                key.retired_on = state["day"]
+
+    def _save_state(self):
+        try:
+            STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            STATE_PATH.write_text(json.dumps({"day": pacific_day(),
+                                              "retired": [self._tail(k) for k in self.keys if k.retired()]}),
+                                  encoding="utf-8")
+        except Exception:                                # a read-only disk must not stop an analysis
+            pass
+
+    def active_keys(self):
+        """The first ACTIVE_KEYS keys that still have daily quota, in secrets order (rolling replacement)."""
+        return [k for k in self.keys if not k.retired()][:self.active_size]
+
+    def capacity(self):
+        """How many analyses can run at once: one per active key."""
+        return len(self.active_keys())
+
+    def _retire(self, key):
+        with self.lock:
+            if not key.retired():
+                key.retired_on = pacific_day()
+                self._save_state()
+                print(f"   [{key.label}] daily quota used up: retired until midnight Pacific; "
+                      f"active now: {', '.join(k.label for k in self.active_keys()) or 'none'}")
+
     # --- choosing a key ----------------------------------------------------------------------------------------------
     def _best(self, exclude=None):
-        """The key with the most room: not resting, fewest analyses running, fewest tokens in the last minute.
-        If every key is resting, the one that wakes up first."""
+        """The active key with the most room: not resting, fewest analyses running, fewest tokens in the last minute.
+        If every active key is resting, the one that wakes up first."""
         now = time.time()
-        candidates = [k for k in self.keys if k is not exclude] or self.keys
+        active = self.active_keys()
+        if not active:
+            raise ModelBusy("daily_quota")
+        candidates = [k for k in active if k is not exclude] or active
         awake = [k for k in candidates if not k.resting(now)]
         if not awake:
             return min(candidates, key=lambda k: k.resting_until)
@@ -186,11 +285,16 @@ class KeyPool:
         if not self.keys:
             raise RuntimeError("No Gemini API key configured (GEMINI_API_KEYS or GEMINI_API_KEY).")
         problem = "rate_limit"
-        for attempt in range(MAX_ATTEMPTS):
+        named_failures, busy_since, busy_tries = 0, None, 0
+        while named_failures < MAX_ATTEMPTS:
             key = self.current.get()
             if key is None:                               # a call outside pool.run() (command line helpers)
                 with self.lock:
                     key = self._best()
+            elif key.retired():                           # its daily quota ran out: move to a key that has some
+                key = self._move(key)
+                if key.retired():
+                    raise ModelBusy("daily_quota")
             now = time.time()
             if len(self.keys) > 1 and (key.resting(now) or key.full(now)):
                 other = self._best(exclude=key)
@@ -198,24 +302,38 @@ class KeyPool:
                 if not other.resting(now) and (key.resting(now) or not other.full(now)):
                     key = self._move(key) if self.current.get() is key else other
             if key.resting(time.time()):                  # every key is resting: wait, then try again
+                named_failures += 1
                 self._wait(on_event, "every key rate-limited" if problem == "rate_limit" else problem)
                 continue
             self._pace()
             try:
                 response = key.client.models.generate_content(model=model, contents=contents, config=config)
             except Exception as error:
+                busy = _is_overload(error) or (_is_rate_limit(error) and not _names_a_quota(error))
+                if busy:                                  # Google is busy: stay on this key and back off
+                    _report_limit(key, error)
+                    problem = "overloaded"
+                    busy_since = busy_since or time.time()
+                    limit = PATIENT_SECONDS if self.patient else APP_BUSY_SECONDS
+                    if time.time() - busy_since > limit:
+                        raise ModelBusy(problem)
+                    wait = BACKOFF_SECONDS[min(busy_tries, len(BACKOFF_SECONDS) - 1)]
+                    busy_tries += 1
+                    self._wait(on_event, problem, wait)
+                    continue
                 if _is_rate_limit(error):
                     _report_limit(key, error)
-                    problem = "daily_quota" if _is_daily_quota(error) else "rate_limit"
-                    if len(self.keys) == 1:               # one key: the old policy, wait and retry the same key
+                    if _is_daily_quota(error):            # spent for today: retire it, the next key takes its place
+                        problem = "daily_quota"
+                        self._retire(key)
+                        continue
+                    problem = "rate_limit"
+                    named_failures += 1
+                    if len(self.active_keys()) == 1:      # one key: the old policy, wait and retry the same key
                         self._wait(on_event, problem)
                     else:
                         self._rest(key)                   # the next attempt moves to another key (or waits
                     continue                              # if every key is resting)
-                if _is_overload(error):
-                    problem = "overloaded"
-                    self._wait(on_event, problem)
-                    continue
                 raise
             self._record(key, response)
             return response
@@ -230,20 +348,23 @@ class KeyPool:
             self.last_call = time.time()
 
     @staticmethod
-    def _wait(on_event, reason="rate_limit"):
-        labels = {"overloaded": "Google overloaded (503)", "daily_quota": "daily quota used up",
+    def _wait(on_event, reason="rate_limit", seconds=None):
+        seconds = seconds or WAIT_SECONDS
+        labels = {"overloaded": "Google busy (503 or unnamed 429)", "daily_quota": "daily quota used up",
                   "rate_limit": "rate limit", "every key rate-limited": "every key rate-limited"}
-        print(f"   ({labels.get(reason, reason)}, waiting {WAIT_SECONDS} seconds...)")
+        print(f"   ({labels.get(reason, reason)}, waiting {seconds} seconds...)")
         if on_event:
-            on_event({"type": "wait", "seconds": WAIT_SECONDS, "reason": reason})
-        time.sleep(WAIT_SECONDS)
+            on_event({"type": "wait", "seconds": seconds, "reason": reason})
+        time.sleep(seconds)
 
     def status(self):
         """For the page: per key, analyses running, calls and tokens in the last minute, resting or not."""
         now = time.time()
         with self.lock:
+            active = self.active_keys()
             return [{"key": k.label, "running": k.active, "calls_last_minute": k.last_minute(now)[0],
-                     "tokens_last_minute": k.last_minute(now)[1], "resting": k.resting(now)} for k in self.keys]
+                     "tokens_last_minute": k.last_minute(now)[1], "resting": k.resting(now),
+                     "active": k in active, "retired": k.retired()} for k in self.keys]
 
 
 pool = KeyPool(read_keys())
