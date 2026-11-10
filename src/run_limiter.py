@@ -3,8 +3,9 @@
 # key and most runs would stall on rate-limit errors. Instead, at most MAX_RUNS analyses run at the same time across
 # all visitors; everyone else waits in a first-come, first-served line and sees their place in it.
 #
-# MAX_RUNS defaults to two analyses per key (one project's minute of tokens covers about two runs). Set
-# MAX_CONCURRENT_RUNS in the Streamlit secrets to override it.
+# Nov 10: the limit is one analysis per ACTIVE key (src/key_pool.py: 4 keys at a time, rolling replacement), read live,
+# so it shrinks if keys run out of daily quota. The load test showed 6 at once is fine and 12 at once fails on every
+# key. Set MAX_CONCURRENT_RUNS in the Streamlit secrets to override it with a fixed number.
 #
 # Streamlit runs each visitor's script in its own thread of the same process, so one module-level line is shared by
 # everyone. A visitor who leaves or clicks something else gives their place back (the finally block).
@@ -16,7 +17,7 @@ from contextlib import contextmanager
 
 from src.key_pool import pool
 
-RUNS_PER_KEY = 2
+RUNS_PER_KEY = 1                  # Nov 10: was 2; one full analysis is about half a project's minute
 MAX_WAIT_SECONDS = 15 * 60
 CHECK_EVERY_SECONDS = 2
 
@@ -28,15 +29,20 @@ def _max_runs():
     except Exception:
         configured = None
     configured = configured or os.environ.get("MAX_CONCURRENT_RUNS")
-    return int(configured) if configured else max(2, RUNS_PER_KEY * len(pool.keys))
+    return int(configured) if configured else None      # None: follow the active keys
 
 
 class WaitingLine:
-    def __init__(self, limit):
-        self.limit = limit
+    def __init__(self, fixed_limit=None):
+        self.fixed_limit = fixed_limit
         self.line = deque()
         self.running = 0
         self.changed = threading.Condition()
+
+    @property
+    def limit(self):
+        """Analyses allowed at once: the fixed setting, or one per active key (at least one)."""
+        return self.fixed_limit or max(1, RUNS_PER_KEY * pool.capacity())
 
     @contextmanager
     def slot(self, on_wait=None):
