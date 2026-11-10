@@ -12,6 +12,12 @@
 #   python -m eval.run_backtest --limit 5          # a short trial
 #   python -m eval.run_backtest --prompt V4
 #   python -m eval.analyze_backtest                # the report, when the runs are done
+#
+# Nov 10, set B (docs/test_plan.md, fresh test for V6): --set b runs eval/test_set_200b.csv and writes
+# eval/backtest_200b_results.jsonl and eval/backtest_200b_runs.jsonl. It is blind: it prints progress and errors only,
+# never correct or wrong, because the plan allows exactly two looks at accuracy (after 100 and after 200 companies).
+#   python -m eval.run_backtest --set b --prompt V6 --limit 100     # stage 1: the first 100, in set order
+#   python -m eval.run_backtest --set b --prompt V6                 # stage 2: the rest
 import json
 import sys
 import threading
@@ -56,6 +62,14 @@ def run_one(row, prompt):
 
 
 def main(args):
+    global TEST_SET_PATH, RESULTS_PATH, RUN_LOG_PATH
+    pool.patient = True                  # Nov 10: wait out a busy Google instead of failing the company (key_pool.py)
+    blind = "--set" in args and args[args.index("--set") + 1].lower() == "b"
+    if blind:
+        TEST_SET_PATH = Path("eval/test_set_200b.csv")
+        RESULTS_PATH = Path("eval/backtest_200b_results.jsonl")
+        RUN_LOG_PATH = Path("eval/backtest_200b_runs.jsonl")
+        print("Set B, blind: progress and errors only (docs/test_plan.md, Nov 10).")
     prompt = args[args.index("--prompt") + 1] if "--prompt" in args else DEFAULT_PROMPT
     limit = int(args[args.index("--limit") + 1]) if "--limit" in args else None
     rows = load_test_set(TEST_SET_PATH)
@@ -77,8 +91,9 @@ def main(args):
             else:
                 errors_in_a_row = 0
                 correct += r["correct"]
-                line = f"{r['direction'] or 'no answer':<9} p={r['probability']}  truth={r['truth']:<9} " \
-                       f"{'correct' if r['correct'] else 'wrong'}"
+                line = "done" if blind else \
+                    f"{r['direction'] or 'no answer':<9} p={r['probability']}  truth={r['truth']:<9} " \
+                    f"{'correct' if r['correct'] else 'wrong'}"
             minutes = (time.time() - started) / 60
             print(f"[{i}/{len(todo)}, {minutes:.0f} min] {r['ticker']:<6} {line}")
             if errors_in_a_row >= 5:
@@ -88,6 +103,10 @@ def main(args):
                     f.cancel()
                 break
     done = i - errors
+    if blind:
+        print(f"\nThis run: {done} finished, {errors} errors (run again to retry them). Accuracy is looked at only "
+              "at the two stages in docs/test_plan.md.")
+        return
     print(f"\nThis run: {correct} of {done} correct, {errors} errors (run again to retry them). "
           f"Report: python -m eval.analyze_backtest" + (f" --prompt {prompt}" if prompt != DEFAULT_PROMPT else ""))
 
