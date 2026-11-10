@@ -24,6 +24,12 @@
 #   python -m eval.build_test_set universe
 #   python -m eval.build_test_set check            # add --limit 10 for a short trial
 #   python -m eval.build_test_set status
+#
+# Nov 10, set B (fresh 200 for V6, pre-registered in docs/test_plan.md): add --set b to check or status. Same gates and
+# same order; it starts after set A's last company (universe order 217) and skips the development set's companies.
+# Writes eval/sample_checks_b.csv and eval/test_set_200b.csv; set A's files are not touched.
+#   python -m eval.build_test_set check --set b
+#   python -m eval.build_test_set status --set b
 import csv
 import random
 import sys
@@ -42,6 +48,10 @@ ACCEPTED_VERDICTS = ("OK", "OK_BUT_UNKNOWN_COMPANY")
 UNIVERSE_PATH = Path("eval/universe.csv")
 CHECKS_PATH = Path("eval/sample_checks.csv")
 TEST_SET_PATH = Path("eval/test_set_200.csv")
+DEV_SET_PATH = Path("eval/test_set.csv")
+START_AFTER_ORDER = 0                       # set B: 217, the universe order of set A's 200th company
+EXCLUDED = set()                            # set B: the development set's tickers and set A's
+SETS = {"b": {"checks": Path("eval/sample_checks_b.csv"), "test": Path("eval/test_set_200b.csv"), "start_after": 217}}
 
 REVENUE_TAGS = ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
                 "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueNet",
@@ -175,7 +185,12 @@ def check(limit=None):
     tried, errors_in_a_row = 0, 0
     for company in universe:
         ticker = company["ticker"]
-        if ticker in checks:
+        if ticker in checks or int(company["order"]) <= START_AFTER_ORDER:
+            continue
+        if ticker in EXCLUDED:                           # set B: never reuse a development-set or set A company
+            checks[ticker] = {"order": company["order"], "ticker": ticker, "cik": company["cik"],
+                              "name": company["name"], "status": "SKIPPED_OTHER_SET",
+                              "detail": "in the development set or set A"}
             continue
         # Stop once TARGET_SIZE companies EARLIER in the order are accepted. Counting earlier ones only (Nov 6 fix)
         # means a company that errored is retried even when 200 were already accepted after it: if it passes, it
@@ -221,7 +236,8 @@ def status():
     accepted = _write_test_set(checks)
     print(f"\nTried {len(checks)} companies: {count('ACCEPTED')} accepted, {count('REJECTED_DATA')} failed the data "
           f"gate, {count('REJECTED_CONTAMINATION')} failed the contamination gate, {count('ERROR_RETRY_LATER')} "
-          f"errors (run again to retry).")
+          f"errors (run again to retry)"
+          + (f", {count('SKIPPED_OTHER_SET')} skipped (development set or set A)." if count('SKIPPED_OTHER_SET') else "."))
     if accepted:
         inc = sum(r["truth"] == "increase" for r in accepted)
         pre = sum(r["target"] == "pretax_income" for r in accepted)
@@ -230,12 +246,26 @@ def status():
               f"{sum(r['skip_newest'] != '1' and r['skip_newest'] != 1 for r in accepted)} hide two 10-Ks.")
 
 
+def use_set(name):
+    """Point the check and status steps at set B's files (set A stays the default, unchanged)."""
+    global CHECKS_PATH, TEST_SET_PATH, START_AFTER_ORDER, EXCLUDED
+    chosen = SETS[name]
+    CHECKS_PATH, TEST_SET_PATH, START_AFTER_ORDER = chosen["checks"], chosen["test"], chosen["start_after"]
+    EXCLUDED = {r["ticker"] for r in _read(DEV_SET_PATH)} | {r["ticker"] for r in _read(Path("eval/test_set_200.csv"))}
+    print(f"Set {name.upper()}: {TEST_SET_PATH}, starting after universe order {START_AFTER_ORDER}, "
+          f"{len(EXCLUDED)} tickers excluded (development set and set A).")
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if "--set" in args:
+        use_set(args[args.index("--set") + 1].lower())
     step = args[0] if args else "status"
     if step == "universe":
         build_universe()
     elif step == "check":
+        from src.key_pool import pool                  # Nov 10: the contamination calls wait out a busy Google
+        pool.patient = True
         check(limit=int(args[args.index("--limit") + 1]) if "--limit" in args else None)
     else:
         status()

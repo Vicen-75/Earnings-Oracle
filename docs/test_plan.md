@@ -82,4 +82,57 @@ With 3 keys (about 1,500 calls a day on the free tier), plan one day for the gat
 
 ## Changes after this date
 
-(none yet)
+### Nov 10, 2026: set B, a fresh test for V6, in two stages
+
+Written before any company in set B is checked and before V6 exists. The commit that adds this note, the set B code in
+`eval/build_test_set.py` and nothing from set B's runs is the record that the companies, the version scored and the
+analysis were fixed in advance.
+
+**Why.** V5 on the 200 above did not beat always-increase. The changes planned for V6 come from reading V5's answers on
+those 200 (`eval/error_analysis_200.md`, issue #54), so a V6 score on the same companies would be inflated. V6 is scored
+on companies nobody has looked at.
+
+**Set B.** Same universe, same shuffled order (seed 883), same two gates, same definitions, target window, truth rule
+and baselines as above. It starts at universe order 218, right after set A's 200th company (HGV, order 217), and
+skips the companies of the development set and of set A. The first 200 companies that pass both gates form set B.
+Files: `eval/sample_checks_b.csv` and `eval/test_set_200b.csv` (`python -m eval.build_test_set check --set b`).
+
+**What is scored.** V6 is the agent (prompt and code) at the commit tagged `v6-frozen`, made before the first run on set
+B. Until then V6 is tried on the 20-company development set only. After the tag nothing changes: no prompt edits, no
+reruns of companies that came out wrong. Named mode and thinking level as in V5. A run that fails or gives no direction
+counts as wrong; a run stopped by a quota or network error is retried, since no answer was seen.
+
+**Main result.** As above: V6 against each of the three baselines on the same companies, exact two-sided McNemar test.
+V6 "beats the baselines" only if it is significantly better than all three.
+
+**Two stages** (group sequential design, Haybittle-Peto boundaries):
+
+| Stage | Companies | Analysed when | Significance threshold, each comparison | Reported |
+|---|---|---|---|---|
+| 1 | the first 100 of set B, in set order | all 100 are done | p < 0.005 | Nov 16 presentation |
+| 2 | all 200 | all 200 are done | p < 0.048 | Nov 30 report |
+
+- Stage 2 is run and reported whatever stage 1 shows. A stage 1 result below 0.005 is reported as significant; a stage
+  1 result above it is reported as "not yet significant", not as a failure.
+- These are the only two looks at accuracy. While the runs are going, only errors and progress are watched: the
+  runner prints no correct or wrong per company for set B.
+- With these thresholds the chance of a false "V6 is better" across both looks stays under 5% (1.8% for this exact
+  test, by simulation).
+
+**Power, stated up front** (simulation, assuming V6 and always-increase disagree on 26% of companies, as V5 did):
+
+| V6 accuracy gain over always-increase | Stage 1 significant | Stage 2 significant |
+|---|---|---|
+| +8 points | 7% | 53% |
+| +10 points | 17% | 80% |
+| +13 points | 34% | 95% |
+| +16 points | 57% | 99% |
+
+Stage 1 detects only a large improvement. The stage 2 result is the one the project stands on.
+
+**Secondary, not part of the test.** If keys allow, V5 also runs on set B. That gives V5's accuracy on fresh companies
+and a V6 vs V5 McNemar comparison, both reported as descriptive.
+
+**Known limits.** Set B has the same target year as set A, so it is a second sample from one economic year, not a test
+on a different year. Set B is drawn later in the same random order, so it is a fresh random sample from the same
+universe, with the same tilt toward companies the model does not remember.
