@@ -119,7 +119,7 @@ def _show_item(entry):
     if entry["tool"] == "stop":
         st.markdown(f"- *Observation:* {entry['observation']}")
         return
-    if entry["tool"] == "draft_answer":            # the model answered; the app asks it once to run the self-check
+    if entry["tool"] in ("draft_answer", "empty_reply"):   # the model answered (or came back empty): no tool was called
         st.markdown(f"- {entry['observation']}")
         return
     ok = entry.get("ok", not str(entry.get("observation", "")).startswith(("Error", "Rejected")))
@@ -139,7 +139,7 @@ class TraceWriter:
         if key != self.key:                                  # a new model call starts a new step
             self.n += 1
             self.key = key
-            suffix = " · Draft answer" if entry["tool"] == "draft_answer" else ""
+            suffix = {"draft_answer": " · Draft answer", "empty_reply": " · Empty reply"}.get(entry["tool"], "")
             st.markdown(f"**Step {self.n} · {_agent_label(entry, agent)}{suffix}**")
         _show_item(entry)
         for sub in entry.get("substeps", []):                # the locator's own model calls, in order
