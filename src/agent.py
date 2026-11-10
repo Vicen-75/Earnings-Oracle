@@ -100,6 +100,29 @@ IMPL = {
 }
 
 
+# --- Javier, Nov 10 (issue #52): ablation runs. "no_mdna" takes the two MD&A tools away and says so, to measure what
+# reading the MD&A adds: the same prompt and settings otherwise, compared with V5's set A answers (docs/test_plan.md).
+ABLATIONS = {
+    "no_mdna": {
+        "drop": {"get_mdna", "locate_mdna"},
+        "note": "Ablation run: the MD&A tools (get_mdna and locate_mdna) are not available in this run. Decide from the "
+                "company card, the industry playbook and the ratios. Ignore the instructions about reading, checking "
+                "or quoting the MD&A, and write \"none\" under Cited passages.",
+        "self_check": "Before you finalize, run the check: is there a ratio that could confirm or contradict your call "
+                      "that you have not computed (pricing or mix: gross_margin; cost discipline: sga_to_revenue or "
+                      "cost_ratio; volume: revenue_growth; inventory: inventory_turnover; investment: capex_to_revenue "
+                      "or rnd_to_revenue; credit: provision_to_core_income)? If so, call compute_ratios now, then give "
+                      "your final answer, changed if the new evidence changes it. If everything relevant is already "
+                      "computed, say so. Either way, use the same answer format and end it with one line "
+                      "\"Self-check: ...\" after the Rationale.",
+    },
+}
+
+
+def _not_available(**_):
+    return {"error": "this tool is not available in this run"}
+
+
 # --- 2. The loop -------------------------------------------------------------------------------------------
 def _generate(contents, config, on_event=None):
     """One model call. src/key_pool.py picks the key, moves to another key on a rate limit, and waits only when
@@ -190,14 +213,14 @@ def _tools_for_run(skip_newest):
 
 
 def investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, write_log=True, log_path=None,
-                skip_newest=None):
+                skip_newest=None, ablation=None):
     """Run one analysis on one API key from the pool (the locator agent inside it uses the same key)."""
     with pool.run():
-        return _investigate(ticker, anonymize, prompt, on_event, write_log, log_path, skip_newest)
+        return _investigate(ticker, anonymize, prompt, on_event, write_log, log_path, skip_newest, ablation)
 
 
 def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, write_log=True, log_path=None,
-                 skip_newest=None):
+                 skip_newest=None, ablation=None):
     """Let the model investigate one ticker with the tools.
     Returns {"answer", "steps", "results", "usage"}:
       steps    [{"reason", "tool", "args", "ok"}] in the order the model called them (the ReAct trace; the evidence
@@ -206,14 +229,20 @@ def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, 
                instead of the model's retelling of them
     on_event(event) is called after every tool call ({"type": "step", ...}) and on rate-limit waits, so the app can
     show progress live. write_log=False keeps app runs out of eval/tool_log.jsonl."""
+    cut = ABLATIONS[ablation] if ablation else None             # issue #52: e.g. no MD&A tools
+    run_tools = types.Tool(function_declarations=[d for d in TOOLS.function_declarations if d.name not in cut["drop"]]) \
+        if cut else TOOLS
+    self_check = cut["self_check"] if cut else SELF_CHECK
     config = types.GenerateContentConfig(
-        system_instruction=PROMPTS[prompt],
-        tools=[TOOLS],
+        system_instruction=PROMPTS[prompt] + (f"\n\n{cut['note']}" if cut else ""),
+        tools=[run_tools],
         temperature=0,
         thinking_config=types.ThinkingConfig(thinking_level=THINKING_LEVEL),
     )
     log, results, calls, draft = [], {}, 0, None
     tools = _tools_for_run(skip_newest)
+    if cut:
+        tools = {**tools, **{name: _not_available for name in cut["drop"]}}
     usage = {"prompt_tokens": 0, "output_tokens": 0, "model_calls": 0}
 
     def brand_scan_call(model, text, cfg):
@@ -232,7 +261,7 @@ def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, 
     def finish(answer):
         usage["billed"] = pool.usage()            # every call of the run, thinking tokens included (issue #55)
         if write_log:
-            _write_log(ticker, log, answer, usage, anonymize, prompt, log_path or LOG_PATH, skip_newest)
+            _write_log(ticker, log, answer, usage, anonymize, prompt, log_path or LOG_PATH, skip_newest, ablation)
         return {"answer": answer, "steps": log, "results": results, "usage": usage, "prompt": prompt}
 
     while True:
@@ -256,7 +285,7 @@ def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, 
             if on_event:
                 on_event({"type": "step", **entry})
             contents.append(response.candidates[0].content)
-            contents.append(types.Content(role="user", parts=[types.Part(text=SELF_CHECK)]))
+            contents.append(types.Content(role="user", parts=[types.Part(text=self_check)]))
             continue
 
         contents.append(response.candidates[0].content)               # keep the model's tool request (and thought signatures)
@@ -313,11 +342,11 @@ def run(ticker, anonymize=False, prompt=DEFAULT_PROMPT, verbose=True):
     return out["answer"], out["steps"]
 
 
-def _write_log(ticker, log, answer, usage, anonymize, prompt, path=LOG_PATH, skip_newest=None):
+def _write_log(ticker, log, answer, usage, anonymize, prompt, path=LOG_PATH, skip_newest=None, ablation=None):
     path.parent.mkdir(exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps({"ticker": ticker, "prompt": prompt, "thinking": THINKING_LEVEL, "anonymized": anonymize,
-                            "backtest_skip_newest": skip_newest,
+                            "backtest_skip_newest": skip_newest, "ablation": ablation,
                             "ratios_available": RATIOS_AVAILABLE, "tools": log,
                             "usage": usage, "answer": answer, "ts": time.strftime("%Y-%m-%d %H:%M:%S")}) + "\n")
 

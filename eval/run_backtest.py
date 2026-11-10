@@ -18,6 +18,12 @@
 # never correct or wrong, because the plan allows exactly two looks at accuracy (after 100 and after 200 companies).
 #   python -m eval.run_backtest --set b --prompt V6 --limit 100     # stage 1: the first 100, in set order
 #   python -m eval.run_backtest --set b --prompt V6                 # stage 2: the rest
+#
+# Nov 10, issue #52: --ablation no_mdna runs set A with the MD&A tools taken away (src/agent.py, ABLATIONS) and writes
+# eval/ablation_no_mdna_results.jsonl and eval/ablation_no_mdna_runs.jsonl. Not blind: set A is already analyzed.
+#   python -m eval.run_backtest --ablation no_mdna
+#   python -m eval.ablation_report
+import functools
 import json
 import sys
 import threading
@@ -44,11 +50,12 @@ def done_tickers(prompt):
     return {r["ticker"] for r in rows if r["prompt"] == prompt and not r.get("error")}
 
 
-def run_one(row, prompt):
+def run_one(row, prompt, ablation=None):
+    agent = functools.partial(investigate, ablation=ablation) if ablation else investigate
     with waiting_line.slot():
         try:
-            res = run_test(row, investigate, log_path=RUN_LOG_PATH, prompt=prompt)
-            record = {"ticker": row["ticker"], "prompt": prompt, "direction": res["direction"],
+            res = run_test(row, agent, log_path=RUN_LOG_PATH, prompt=prompt)
+            record = {"ticker": row["ticker"], "prompt": prompt, "ablation": ablation, "direction": res["direction"],
                       "probability": res["probability"], "truth": row["truth"], "correct": res["correct"],
                       "seconds": res["seconds"], "usage": res["out"]["usage"],
                       "tools": [s["tool"] for s in res["out"]["steps"]], "ts": time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -64,6 +71,11 @@ def run_one(row, prompt):
 def main(args):
     global TEST_SET_PATH, RESULTS_PATH, RUN_LOG_PATH
     pool.patient = True                  # Nov 10: wait out a busy Google instead of failing the company (key_pool.py)
+    ablation = args[args.index("--ablation") + 1] if "--ablation" in args else None
+    if ablation:
+        RESULTS_PATH = Path(f"eval/ablation_{ablation}_results.jsonl")
+        RUN_LOG_PATH = Path(f"eval/ablation_{ablation}_runs.jsonl")
+        print(f"Ablation {ablation} on set A: {RESULTS_PATH}")
     blind = "--set" in args and args[args.index("--set") + 1].lower() == "b"
     if blind:
         TEST_SET_PATH = Path("eval/test_set_200b.csv")
@@ -81,7 +93,7 @@ def main(args):
         return
     started, correct, errors, errors_in_a_row = time.time(), 0, 0, 0
     with ThreadPoolExecutor(max_workers=waiting_line.limit) as executor:
-        futures = [executor.submit(run_one, row, prompt) for row in todo]
+        futures = [executor.submit(run_one, row, prompt, ablation) for row in todo]
         for i, future in enumerate(as_completed(futures), start=1):
             r = future.result()
             if r.get("error"):
@@ -108,7 +120,8 @@ def main(args):
               "at the two stages in docs/test_plan.md.")
         return
     print(f"\nThis run: {correct} of {done} correct, {errors} errors (run again to retry them). "
-          f"Report: python -m eval.analyze_backtest" + (f" --prompt {prompt}" if prompt != DEFAULT_PROMPT else ""))
+          + (f"Report: python -m eval.ablation_report --ablation {ablation}" if ablation else
+             f"Report: python -m eval.analyze_backtest" + (f" --prompt {prompt}" if prompt != DEFAULT_PROMPT else "")))
 
 
 if __name__ == "__main__":

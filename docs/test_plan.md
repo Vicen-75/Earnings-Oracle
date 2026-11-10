@@ -136,3 +136,23 @@ and a V6 vs V5 McNemar comparison, both reported as descriptive.
 **Known limits.** Set B has the same target year as set A, so it is a second sample from one economic year, not a test
 on a different year. Set B is drawn later in the same random order, so it is a fresh random sample from the same
 universe, with the same tilt toward companies the model does not remember.
+
+### Nov 10, 2026: ablation on set A, does the MD&A add anything? (issue #52)
+
+Written before the ablation run.
+
+**Question.** Is V5 more accurate when it can read the MD&A than when it cannot, on the same companies?
+
+**Run.** Set A (the same 200 companies), prompt V5, same model, thinking level and hidden-year rule as the Nov 6 run.
+The only changes: the two MD&A tools (`get_mdna`, `locate_mdna`) are removed, a note in the instructions says they are
+not available, and the self-check asks about ratios instead of the MD&A (`src/agent.py`, `ABLATIONS["no_mdna"]`). The
+empty-answer fix (#60) is not included, so both runs share the same failure modes. Results:
+`eval/ablation_no_mdna_results.jsonl`.
+
+**Comparison.** V5's Nov 6 answers on set A against the ablation's answers, exact two-sided McNemar test, p < 0.05. A
+missing answer counts as wrong. Also reported, descriptive only: each run against always-increase, the confusion of
+calls, decrease-call precision, calibration, and cost per run (`eval/ablation_report.py`).
+
+**Known limits.** The two runs are days apart, and at temperature 0 the model still varies from run to run (#51), so
+some disagreements would appear even with identical tools. Set A's answers were read for the error analysis, but no
+choice in this ablation depends on them.
