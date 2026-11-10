@@ -170,6 +170,14 @@ final answer, changed if the new evidence changes it. If everything relevant is 
 use the same answer format and end it with one line "Self-check: ..." after the Rationale."""
 
 
+# --- Javier, Nov 10 (V6): empty final reply. In V5, 4 of 200 runs (TXRH, SLQT, CATO, CDP) ended with an empty reply
+# right after the self-check, and the empty text became the answer although a full draft existed. Now an empty reply
+# gets one nudge; if the reply is still empty the run returns the draft, marked as such (eval/error_analysis_200.md).
+EMPTY_REPLY = "[the model returned no text]"
+NUDGE = "Your last reply was empty. Give your final answer now, in the required answer format."
+DRAFT_KEPT_NOTE = "\n\nSelf-check: the final reply came back empty twice; this is the draft answer from before the self-check."
+
+
 def _draft_summary(text):
     lines = [l.strip() for l in text.splitlines() if l.strip()][:2]
     return "Draft answer: " + " | ".join(lines)[:200] + ". Asked to run the self-check before finalizing."
@@ -212,7 +220,7 @@ def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, 
         temperature=0,
         thinking_config=types.ThinkingConfig(thinking_level=THINKING_LEVEL),
     )
-    log, results, calls, draft = [], {}, 0, None
+    log, results, calls, draft, nudged = [], {}, 0, None, False
     tools = _tools_for_run(skip_newest)
     usage = {"prompt_tokens": 0, "output_tokens": 0, "model_calls": 0}
 
@@ -243,7 +251,25 @@ def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, 
             usage["output_tokens"] += response.usage_metadata.candidates_token_count or 0
 
         if not response.function_calls:
-            text = response.text or "[the model returned no text]"
+            text = (response.text or "").strip()
+            if not text and not nudged:                                 # empty reply: ask once more (Nov 10, V6)
+                nudged = True
+                entry = {"model_call": usage["model_calls"], "reason": "", "tool": "empty_reply", "args": {},
+                         "ok": False, "observation": "Empty reply; asked once more for the final answer."}
+                log.append(entry)
+                if on_event:
+                    on_event({"type": "step", **entry})
+                if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+                    contents.append(response.candidates[0].content)
+                if contents[-1].role == "user":                         # never two user turns in a row
+                    contents[-1].parts.append(types.Part(text=NUDGE))
+                else:
+                    contents.append(types.Content(role="user", parts=[types.Part(text=NUDGE)]))
+                continue
+            if not text:
+                if draft is not None:                                   # still empty: keep the draft
+                    return finish(draft + DRAFT_KEPT_NOTE)
+                text = EMPTY_REPLY
             if draft is not None or "no data found" in text.lower()[:300]:
                 return finish(text)                                   # final answer (after the self-check)
             # --- Self-check (Nov 5): the first answer is a draft. The code asks once whether the MD&A makes a claim a
