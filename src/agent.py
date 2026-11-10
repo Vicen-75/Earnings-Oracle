@@ -116,6 +116,18 @@ ABLATIONS = {
                       "computed, say so. Either way, use the same answer format and end it with one line "
                       "\"Self-check: ...\" after the Rationale.",
     },
+    # Nov 10: the other half of the ablation. The MD&A tools stay; the ratio tool goes. The playbook stays too: it says
+    # what to look for in the MD&A, not only which ratios to compute.
+    "no_ratios": {
+        "drop": {"compute_ratios"},
+        "note": "Ablation run: the ratio tool (compute_ratios) is not available in this run. Decide from the company "
+                "card, the industry playbook and the MD&A. Ignore the instructions about computing or checking ratios, "
+                "and write \"none\" under Ratios that mattered.",
+        "self_check": "Before you finalize, run the check: is there a statement in the MD&A, about results or the "
+                      "outlook, that contradicts your call? If you are not sure, reread the relevant part of the MD&A "
+                      "you received, then give your final answer, changed if the evidence changes it. Either way, use "
+                      "the same answer format and end it with one line \"Self-check: ...\" after the Rationale.",
+    },
 }
 
 

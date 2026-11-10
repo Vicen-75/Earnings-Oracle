@@ -156,3 +156,22 @@ calls, decrease-call precision, calibration, and cost per run (`eval/ablation_re
 **Known limits.** The two runs are days apart, and at temperature 0 the model still varies from run to run (#51), so
 some disagreements would appear even with identical tools. Set A's answers were read for the error analysis, but no
 choice in this ablation depends on them.
+
+### Nov 10, 2026: second ablation on set A, do the ratios add anything? (issue #52)
+
+Written after the first ablation's results and before this run.
+
+**Question.** Is V5 more accurate with the ratio tool than without it, on the same companies?
+
+**Run.** As the first ablation, with the other tool removed: the ratio tool (`compute_ratios`) goes; the company card,
+the industry playbook and both MD&A tools stay. A note in the instructions says the ratio tool is not available, and
+the self-check asks the model to reread the MD&A for a statement that contradicts its call (`src/agent.py`,
+`ABLATIONS["no_ratios"]`). Results: `eval/ablation_no_ratios_results.jsonl`.
+
+**Comparison.** V5's Nov 6 answers on set A against this run's, exact two-sided McNemar test, p < 0.05, missing answer
+counts as wrong; the same descriptive tables as the first ablation. The exploratory breakdown in
+`eval/ablation_report.py` was chosen after seeing the first ablation, so for this run too it explains, it does not
+test.
+
+**Known limits.** As the first ablation. In addition, the MD&A itself reports last year's figures, so this measures
+what the computed, comparable ratios add, not what numbers add in general.
