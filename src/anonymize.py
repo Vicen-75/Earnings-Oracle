@@ -99,6 +99,8 @@ def _keep_specific(names, text):
     for n in (n.strip() for n in names):
         if len(n) < 3 or n.lower() in {"company", "the company", "product", "products"} or n.lower() not in text.lower():
             continue
+        if len(n.split()) == 1 and n == n.lower():   # Nov 12, set A check: the scan returned 'our' and '3000', which
+            continue                                   # erased every 'our' and that number from the MD&A
         if len(n.split()) == 1 and n != n.lower():
             as_written = len(re.findall(rf"\b{re.escape(n)}\b", text))
             lower = len(re.findall(rf"\b{re.escape(n.lower())}\b", text))
