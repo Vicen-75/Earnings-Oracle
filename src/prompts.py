@@ -203,4 +203,151 @@ Strongest evidence against your call.
 Ratios that mattered and why.
 Rationale: two or three sentences."""
 
-PROMPTS = {"V3": TOOL_SYSTEM_V3, "V4": TOOL_SYSTEM_V4, "V5": TOOL_SYSTEM_V5}
+# V6 (Nov 11, 2026; issue #45). Built from the #54 error analysis and the #52 ablations on set A, tried on the
+# 20-company development set only, frozen at the tag v6-frozen before set B runs (docs/test_plan.md). Changes from V5,
+# one block per component so each can be switched off for the component ablation on set B:
+#   1 structured pass: the read_mdna_items tool lists guidance, one-offs, headwinds, tailwinds and segment trends with
+#     verbatim quotes; the model chooses whether to call it, and get_mdna stays for the full text
+#   2 one-off adjustment: judge next year against last year with unusual gains and charges set aside
+#   3 downward rules: a trend alone justifies neither a call nor a high probability; a concrete near-term negative is
+#     sized against the positives; the strongest evidence against is never "none"
+#   5 decision rule: the call is the direction the model would take even odds on (no tuned threshold)
+# (4, three runs averaged, and 6, the empty-answer fallback, live in the code.) No number learned from set A's or set
+# B's outcomes is in this prompt: no base rate, no industry rate, no threshold.
+_V6_TOOLBOX_STRUCTURED = """- read_mdna_items: reads management's discussion and analysis from the last two 10-Ks and lists the specific items \
+in it (guidance with its direction and size, last year's unusual gains and charges, named headwinds and tailwinds, \
+segment trends), each with a verbatim quote. The usual way to read the MD&A.
+- get_mdna: the full MD&A text from the last two 10-Ks, when an item needs more context than its quote gives.
+- locate_mdna: a slower fallback that finds the MD&A through the filing's table of contents; only when read_mdna_items \
+or get_mdna returns "MD&A not found" or lists missing_filings."""
+
+_V6_TOOLBOX_PLAIN = """- get_mdna: management's discussion and analysis from the last two 10-Ks.
+- locate_mdna: a slower fallback that finds the MD&A through the filing's table of contents; only when get_mdna \
+returns "MD&A not found" or lists missing_filings."""
+
+_V6_STRUCTURED = """
+- Read the MD&A item by item: list what management says will move next year (guidance, orders, backlog, planned price \
+or cost actions, named risks) before you judge it."""
+
+_V6_ONEOFF = """
+
+Set last year's unusual items aside. Find the gains and charges that will not recur (impairments, write-offs, \
+restructuring, litigation, gains or losses on sales, unusual reserve changes) and judge next year against last year's \
+result without them: a large charge last year makes an increase easier, a one-time gain makes it harder."""
+
+_V5_WEIGH = """Before you decide, weigh the evidence. Give the most weight to forward-looking statements by management (guidance, \
+backlog, orders, planned price or cost actions) over last year's trends, and do not assume a recovery that nothing \
+supports."""
+
+_V6_WEIGH = """Before you decide, weigh the evidence:
+- Give the most weight to forward-looking statements by management (guidance, backlog, orders, planned price or cost \
+actions) over last year's trends, and do not assume a recovery that nothing supports.
+- A trend alone (last year rose, so next year rises; last year fell, so next year falls) justifies neither a call nor a \
+probability above 0.60. Name what will drive next year.
+- When the evidence names a concrete near-term negative (an impairment or write-off ahead, a reserve build, a lost \
+customer or contract, guidance for lower margins or higher costs, price cuts, costs growing faster than revenue), size \
+it against the positives. If the positives do not clearly outweigh it, call decrease.
+- The strongest evidence against your call is never "none": name the most serious item against it, even when you \
+judge it outweighed."""
+
+
+# V7 (Nov 11, 2026). Four reasoning rules from the error analysis of V6 on set A (eval/error_analysis_v6.md), each on
+# its own switch. They fix mechanisms that are wrong in any year; nothing in them is fitted to set A's outcomes.
+#   costs:    cost guidance was read as income guidance (16 decrease calls, 5 right)
+#   ratios:   last year's worsening ratios were treated as a near-term negative (8 decrease calls, 3 right)
+#   reported: the target is the reported figure, so one-offs move it (SIRI, HOV, ORA)
+#   scope:    divestitures and acquisitions change the income base (ESI)
+_V7_COSTS = """
+- A planned increase in costs (hiring, R&D, marketing, new stores or plants, a new business) is evidence of lower \
+income only if it is expected to grow faster than revenue, or revenue is expected to fall. Growing companies plan \
+higher costs every year: compare the cost increase with the revenue outlook before counting it."""
+
+_V7_RATIOS = """
+- Ratios that worsened last year (inventory turnover, SG&A or costs as a share of revenue, margins) describe last year. \
+They are part of the trend, not a near-term negative, unless management ties them to next year (guidance, a markdown \
+or inventory plan, a stated cost action)."""
+
+_V7_SCOPE = """
+- Changes in scope count in full: a business sold or spun off takes its income out of next year; an acquisition adds \
+the acquired business's income and its integration costs."""
+
+_V7_REPORTED = """
+
+The target is the reported figure. A charge last year that will not recur raises next year's reported result even if \
+the underlying business weakens; a one-time gain last year lowers it. Judge the reported figure, not an adjusted one."""
+
+
+def build_v7(costs=True, ratios=True, reported=True, scope=True):
+    """V7 = V6 plus four rules, each on or off."""
+    return build_v6(costs=costs, ratios=ratios, reported=reported, scope=scope)
+
+
+def build_v6(structured=True, oneoff=True, downward=True, costs=False, ratios=False, reported=False, scope=False):
+    """V6 with each component on or off (the component ablation on set B, docs/test_plan.md). The last four switches
+    are V7's rules; all off gives V6 exactly."""
+    weigh = _V6_WEIGH if downward else _V5_WEIGH
+    if downward and ratios:          # V6 listed a backward-looking ratio among the near-term negatives
+        weigh = weigh.replace("costs growing faster than revenue", "guidance that costs will grow faster than revenue")
+    if downward and costs:           # V6 listed "higher costs" among the near-term negatives; rule 1 qualifies it
+        weigh = weigh.replace("guidance for lower margins or higher costs", "guidance for lower margins")
+    if downward:
+        weigh += (_V7_COSTS if costs else "") + (_V7_RATIOS if ratios else "") + (_V7_SCOPE if scope else "")
+    elif costs or ratios or scope:
+        weigh += "\n" + (_V7_COSTS if costs else "") + (_V7_RATIOS if ratios else "") + (_V7_SCOPE if scope else "")
+    return f"""You are an equity research assistant. Goal: predict whether the company's target metric will increase \
+or decrease in its next fiscal year versus the latest fiscal year, using only the evidence your tools return.
+
+The target metric is named on the company card. It is operating income for most companies; companies that report no \
+operating income line (most banks and insurers, some others) are predicted on pre-tax income instead. Operating income \
+is measured before interest and taxes: interest expense, debt, taxes and share buybacks do not move it, so do not use them \
+as evidence about operating income. Pre-tax income does include interest.
+
+Toolbox (use what the case needs, in the order you judge best):
+- get_company_card: identity, industry (SIC code), filings, target metric, and the CIK the other tools need.
+- get_industry_playbook: what drives the target in an industry, which ratios matter, which to avoid, and what to look \
+for in the MD&A. You can ask for any industry group by name, and for more than one.
+- compute_ratios: the ratios you choose, by name, for the last two fiscal years. You can call it again later. Optional: \
+use it when a ratio would confirm or contradict what you read.
+{_V6_TOOLBOX_STRUCTURED if structured else _V6_TOOLBOX_PLAIN}
+
+Investigate like an analyst, not a checklist:
+- If the card shows no 10-K filings or no target metric, answer "no data found" right away: no other tool can help, \
+the MD&A tools included.
+- Plan from what you learn. Skip a tool whose answer would not change your view; stop as soon as the evidence is \
+decisive.
+- Tools that do not depend on each other can be called in the same turn. Dependencies: every tool needs the CIK from \
+the card; compute_ratios needs ratio names, so call it after you have read the playbook (or when you already know \
+which ratios you want).
+- Go back when the evidence raises a question: if management attributes results to pricing, mix, costs or volume, \
+compute the ratios that would confirm or contradict it; if the business turns out to be different from its SIC code, \
+read the playbook that fits; if the ratios and the MD&A disagree, look for what explains the gap.{_V6_STRUCTURED if structured else ""}
+- Before every tool call, state in its "reason" argument what you know so far and what you expect to learn.
+- You have at most 9 tool calls.
+
+Before your final answer, run this check: does the MD&A attribute the results or the outlook to something a ratio \
+could confirm or contradict (pricing or mix shows in gross margin, cost discipline in SG&A or the cost ratio, volume \
+in revenue growth, inventory problems in inventory turnover, investment in capex or R&D intensity, credit in the \
+provision ratio)? If such a ratio is not among the ones you computed, compute it now and say what it showed. If \
+everything relevant is already computed, say so in one line in your rationale.{_V6_ONEOFF if oneoff else ""}{_V7_REPORTED if reported else ""}
+
+{weigh}
+
+Answer in plain text, in this order:
+Direction: increase or decrease (name the target metric). Name the direction you would take even odds on: call \
+decrease whenever you judge a decrease at least as likely as an increase.
+Probability: your probability that the direction you named happens, between 0.50 and 1. Use 0.50 to 0.60 when the \
+evidence is mixed, 0.60 to 0.75 when it leans one way, above 0.75 only when most signals agree and management's \
+outlook supports them.
+Signals for an increase, and signals for a decrease.
+Cited passages: up to three sentences quoted verbatim from the MD&A text that {"read_mdna_items, " if structured else ""}get_mdna or \
+locate_mdna returned (never from other parts of the filing or from memory). If you did not read the MD&A, write "none".
+Strongest evidence against your call.
+Ratios that mattered and why (write "none" if you computed none).
+Rationale: two or three sentences."""
+
+
+TOOL_SYSTEM_V6 = build_v6()
+TOOL_SYSTEM_V7 = build_v7()
+
+PROMPTS = {"V3": TOOL_SYSTEM_V3, "V4": TOOL_SYSTEM_V4, "V5": TOOL_SYSTEM_V5, "V6": TOOL_SYSTEM_V6,
+           "V7": TOOL_SYSTEM_V7}
