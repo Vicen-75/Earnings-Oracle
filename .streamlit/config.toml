@@ -1,0 +1,56 @@
+# Look and feel (Nov 12, German): a sober research-note style. Colours and fonts used across all three tabs.
+# Fonts are served from static/fonts (SIL Open Font License, see the .txt files there), so they load the same on
+# Streamlit Cloud and locally without calling Google Fonts.
+
+[server]
+enableStaticServing = true
+
+[client]
+toolbarMode = "viewer"            # hides the Deploy button and developer menu for visitors
+
+[theme]
+base = "light"
+primaryColor = "#1D3A6B"          # navy: buttons, links, active tab
+backgroundColor = "#F6F8FB"       # cool page grey
+secondaryBackgroundColor = "#ECEFF4"
+textColor = "#17233B"             # ink
+borderColor = "#DCE1E8"
+font = "IBM Plex Sans, sans-serif"
+headingFont = "Source Serif, serif"
+baseRadius = "6px"
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/ibm-plex-sans-latin-400-normal.woff2"
+weight = 400
+style = "normal"
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/ibm-plex-sans-latin-400-italic.woff2"
+weight = 400
+style = "italic"
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/ibm-plex-sans-latin-500-normal.woff2"
+weight = 500
+style = "normal"
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/ibm-plex-sans-latin-600-normal.woff2"
+weight = 600
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Source Serif"
+url = "app/static/fonts/source-serif-4-latin-500-normal.woff2"
+weight = 500
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Source Serif"
+url = "app/static/fonts/source-serif-4-latin-600-normal.woff2"
+weight = 600
+style = "normal"
