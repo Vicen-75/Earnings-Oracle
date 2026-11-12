@@ -82,4 +82,96 @@ With 3 keys (about 1,500 calls a day on the free tier), plan one day for the gat
 
 ## Changes after this date
 
-(none yet)
+### Nov 10, 2026: set B, a fresh test for V6, in two stages
+
+Written before any company in set B is checked and before V6 exists. The commit that adds this note, the set B code in
+`eval/build_test_set.py` and nothing from set B's runs is the record that the companies, the version scored and the
+analysis were fixed in advance.
+
+**Why.** V5 on the 200 above did not beat always-increase. The changes planned for V6 come from reading V5's answers on
+those 200 (`eval/error_analysis_200.md`, issue #54), so a V6 score on the same companies would be inflated. V6 is scored
+on companies nobody has looked at.
+
+**Set B.** Same universe, same shuffled order (seed 883), same two gates, same definitions, target window, truth rule
+and baselines as above. It starts at universe order 218, right after set A's 200th company (HGV, order 217), and
+skips the companies of the development set and of set A. The first 200 companies that pass both gates form set B.
+Files: `eval/sample_checks_b.csv` and `eval/test_set_200b.csv` (`python -m eval.build_test_set check --set b`).
+
+**What is scored.** V6 is the agent (prompt and code) at the commit tagged `v6-frozen`, made before the first run on set
+B. Until then V6 is tried on the 20-company development set only. After the tag nothing changes: no prompt edits, no
+reruns of companies that came out wrong. Named mode and thinking level as in V5. A run that fails or gives no direction
+counts as wrong; a run stopped by a quota or network error is retried, since no answer was seen.
+
+**Main result.** As above: V6 against each of the three baselines on the same companies, exact two-sided McNemar test.
+V6 "beats the baselines" only if it is significantly better than all three.
+
+**Two stages** (group sequential design, Haybittle-Peto boundaries):
+
+| Stage | Companies | Analysed when | Significance threshold, each comparison | Reported |
+|---|---|---|---|---|
+| 1 | the first 100 of set B, in set order | all 100 are done | p < 0.005 | Nov 16 presentation |
+| 2 | all 200 | all 200 are done | p < 0.048 | Nov 30 report |
+
+- Stage 2 is run and reported whatever stage 1 shows. A stage 1 result below 0.005 is reported as significant; a stage
+  1 result above it is reported as "not yet significant", not as a failure.
+- These are the only two looks at accuracy. While the runs are going, only errors and progress are watched: the
+  runner prints no correct or wrong per company for set B.
+- With these thresholds the chance of a false "V6 is better" across both looks stays under 5% (1.8% for this exact
+  test, by simulation).
+
+**Power, stated up front** (simulation, assuming V6 and always-increase disagree on 26% of companies, as V5 did):
+
+| V6 accuracy gain over always-increase | Stage 1 significant | Stage 2 significant |
+|---|---|---|
+| +8 points | 7% | 53% |
+| +10 points | 17% | 80% |
+| +13 points | 34% | 95% |
+| +16 points | 57% | 99% |
+
+Stage 1 detects only a large improvement. The stage 2 result is the one the project stands on.
+
+**Secondary, not part of the test.** If keys allow, V5 also runs on set B. That gives V5's accuracy on fresh companies
+and a V6 vs V5 McNemar comparison, both reported as descriptive.
+
+**Known limits.** Set B has the same target year as set A, so it is a second sample from one economic year, not a test
+on a different year. Set B is drawn later in the same random order, so it is a fresh random sample from the same
+universe, with the same tilt toward companies the model does not remember.
+
+### Nov 10, 2026: ablation on set A, does the MD&A add anything? (issue #52)
+
+Written before the ablation run.
+
+**Question.** Is V5 more accurate when it can read the MD&A than when it cannot, on the same companies?
+
+**Run.** Set A (the same 200 companies), prompt V5, same model, thinking level and hidden-year rule as the Nov 6 run.
+The only changes: the two MD&A tools (`get_mdna`, `locate_mdna`) are removed, a note in the instructions says they are
+not available, and the self-check asks about ratios instead of the MD&A (`src/agent.py`, `ABLATIONS["no_mdna"]`). The
+empty-answer fix (#60) is not included, so both runs share the same failure modes. Results:
+`eval/ablation_no_mdna_results.jsonl`.
+
+**Comparison.** V5's Nov 6 answers on set A against the ablation's answers, exact two-sided McNemar test, p < 0.05. A
+missing answer counts as wrong. Also reported, descriptive only: each run against always-increase, the confusion of
+calls, decrease-call precision, calibration, and cost per run (`eval/ablation_report.py`).
+
+**Known limits.** The two runs are days apart, and at temperature 0 the model still varies from run to run (#51), so
+some disagreements would appear even with identical tools. Set A's answers were read for the error analysis, but no
+choice in this ablation depends on them.
+
+### Nov 10, 2026: second ablation on set A, do the ratios add anything? (issue #52)
+
+Written after the first ablation's results and before this run.
+
+**Question.** Is V5 more accurate with the ratio tool than without it, on the same companies?
+
+**Run.** As the first ablation, with the other tool removed: the ratio tool (`compute_ratios`) goes; the company card,
+the industry playbook and both MD&A tools stay. A note in the instructions says the ratio tool is not available, and
+the self-check asks the model to reread the MD&A for a statement that contradicts its call (`src/agent.py`,
+`ABLATIONS["no_ratios"]`). Results: `eval/ablation_no_ratios_results.jsonl`.
+
+**Comparison.** V5's Nov 6 answers on set A against this run's, exact two-sided McNemar test, p < 0.05, missing answer
+counts as wrong; the same descriptive tables as the first ablation. The exploratory breakdown in
+`eval/ablation_report.py` was chosen after seeing the first ablation, so for this run too it explains, it does not
+test.
+
+**Known limits.** As the first ablation. In addition, the MD&A itself reports last year's figures, so this measures
+what the computed, comparable ratios add, not what numbers add in general.
