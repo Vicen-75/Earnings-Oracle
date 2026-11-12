@@ -1,93 +1,74 @@
-## Workshop checkpoint
-Group Assignment
-Team name: Earnings Oracle (Team 6)
+# Earnings Oracle
 
-Members (full names):
-German Cifuentes
-Javier Berain Garza
-Nicolas Rios Cabo
-Vicente Llinares Llata
- 
-0. LOGISTICS
-   Attending the Oct 23 workshop? (yes / no): Yes
-   Project board link (§5.7): https://github.com/users/Vicen-75/projects/1/views/1
-   Streamlit app URL (must load; it does not yet have to do anything): https://earnings-oracle.streamlit.app/
-   Where your API key lives: Streamlit Community Cloud Secrets (App Settings → Secrets), stored as GEMINI_API_KEY and accessed by src/llm.py via st.secrets. For Colab testing, the key is stored in Colab Secrets. 
- 
- 
-2. THE PROJECT, AS IT STANDS TODAY
-   Update these from your proposal — do not copy them across if they have changed.
-   Who the user is: junior financial analyst building a stock pitch who wants a quick sense of the direction of a listed company's             earnings. (Unchanged from the proposal.)
-   The task, in one sentence: The user gives a ticker, the tool reads the company's last two 10-Ks, and it predicts whether operating          income in the next fiscal year will increase or decrease versus the current one (or says "no data found").
-   The user's input, and what comes back to the user: Input: a ticker. Back: the direction (increase / decrease) with a probability, up to     three cited passages from the filings, a summary table of financial ratios, a ratio-only baseline verdict next to it, and a disclaimer.     Today the deployed app only returns a placeholder message (see section 3).
-   Every source the app reads (§3.2):
-   - SEC EDGAR, public data from the US Securities and Exchange Commission, read with the required User-Agent header and a self-imposed        limit  of 8 requests/second (the SEC allows 10): company_tickers.json (ticker to CIK), the submissions API (filing index, SIC code), the    XBRL company concept API (OperatingIncomeLoss), and the 10-K primary documents (MD&A text).
-  - Gemini API, free tier (gemini-3.1-flash-lite), for the model calls.
-  - No data about real, identifiable people.
- 
- 
-2. WHAT CHANGED SINCE THE PROPOSAL
-   What you changed in what you build or how you build it, and why (write "none" if nothing):
-   1. Tool calling is now the model's decision, not a fixed pipeline. The model gets a short company card (industry, fiscal year end, which       filings exist, whether the operating income tag exists) and chooses the ratio set and writes its own MD&A search queries. Why:              proposal feedback (see below). Design in docs/tool_calling.md, prototype in src/agent.py.
-   2. Contamination test v2 (quarter probe added). Our first runs (Oct 19) showed the model answers "unknown" for the FY2025 full year but        remembers quarters of it, so its cutoff sits inside FY2025 and the proposal's idea of "pick 10-Ks after the cutoff" is not enough.          eval/contamination.py now asks about the full year, the quarters of the target year, and a control year, and treats any remembered          result after the prior year end as a leak.
-   3. Metric sharpened. The headline number is now anonymized directional accuracy on 20 scored companies, compared against named accuracy,       the ratio-only baseline and "always increase". The four robustness inputs (invalid ticker, one 10-K, 20-F filer, MD&A not found)            moved out of the 20 and are reported pass/fail separately, so trivial "no data" answers do not inflate accuracy. See                        docs/success_metric.md.
-   4. Engineering additions: EDGAR cache plus SEC rate limit, a usage cap (10 analyses per session) and a disclaimer in the app, versioned        prompts in src/prompts.py, and a crash-proof contamination run that saves after every company.
-   5. Possible scope cut: banks and insurers have no OperatingIncomeLoss tag (JPM and PGR are flagged NO_OPERATING_INCOME_TAG). We keep           them only if the substitute tag is defined before the test set is fixed; otherwise we cut them and record it in the report.
+IS883 term project, Boston University, Fall 2026 · Team 6: German Cifuentes, Javier Berain Garza, Nicolas Rios Cabo, Vicente Llinares Llata
 
+**App:** https://earnings-oracle.streamlit.app/ · **Project board:** https://github.com/users/Vicen-75/projects/1/views/1
 
-   What the proposal feedback asked for, and what you did about it:
-    1.	Make tool calling the model's decision, a fixed order is a pipeline:	Redesigned (docs/tool_calling.md) and prototyped                       (src/agent.py): four tools, the model picks the ratio set from the industry and writes its own MD&A queries, hard cap of 6 tool             calls. eval/tool_log.json shows CAT (industrial) getting compute_general_ratios and JPM (bank) getting                                      compute_financial_sector_ratios, with different MD&A queries. Caveat: the ratio and MD&A tool bodies are still stubs, so this shows         the model's choice, not real analysis yet.
-    2.	MD&A parsing is a real risk: build against 2-3 filings, fail early with "MD&A not found" and fall back to ratio-only: Designed in:          search_mdna returns {"error": "MD&A not found"} and the system prompt tells the model to answer from what remains or say "no data           found". Not built yet: the real MD&A extractor (issue #10) and retrieval; today search_mdna returns canned passages.
-    3.	Run a contamination test: Done and extended: eval/contamination.py v2 with full-year, quarter and control probes over the 24                candidates in eval/candidates.csv; results in eval/contamination_results.csv. Results on the 24 candidates: 10 usable (HD and PEP           OK; CAT, UNH, LMT, ADBE, MCD, TXN, WM and ROST OK_BUT_UNKNOWN_COMPANY, meaning the model does not even know the control year, so            there is nothing to leak), 5 contaminated (AAPL, MSFT, SBUX, UNP and CSCO: the model answers "unknown" for the full year but                remembers 2-3 quarters of FY2025, exactly the leak the feedback described), 7 with no OperatingIncomeLoss tag (JPM and PGR as               expected, plus KO, XOM, CVX, PFE and NKE, which need a substitute tag) and 2 with no usable target year (DE and ETN). We need at            least 10 more candidates, or a substitute tag that recovers some of the 7, to reach 20 scored companies.
-    4.	Anonymize as a robustness check and compare accuracy with and without names: Part of the metric (named vs anonymized accuracy on the        same 20). The agent has an anonymize flag that is logged, but it is only a placeholder that redacts the name and ticker fields; the         real anonymizer (removing company, ticker and product names) is not built yet.
- 
-3. WHERE THE BUILD STANDS
-   What a user can do on the deployed app today: Open the URL, type a ticker, click Analyze, and see the disclaimer, a counter of analyses     used (cap of 10 per session) and the message "Analysis for <TICKER> is under construction". The app is not connected to the agent yet.
-   For each §5.1 capability you plan to use: where it will fire, and whether it is working / in progress / not started:
+Earnings Oracle is for a junior financial analyst who is building a stock pitch and wants a quick, sourced read on where a company's earnings are heading. You type a US ticker. An AI agent reads the company's last two 10-Ks on SEC EDGAR, chooses which financial ratios matter for that industry, reads the MD&A, and predicts whether **operating income** (pre-tax income for banks and insurers) will **increase or decrease** next fiscal year. It shows a probability, the signals behind the call, passages quoted from the filings and a ratio table. If the data is not there (unknown ticker, a 20-F filer, no MD&A) it says "no data found" instead of guessing.
 
-   1. Capability: Versioned prompts. Where it fires: src/prompts.py (TOOL_SYSTEM_V1), used by src/agent.py; PROMPT_V2 is the planned              before/after change.	Status: working (V1), V2 not started
-   2. Capability: Tool calling.	Where it fires: src/agent.py run(): the model chooses ratio set and MD&A queries, every call logged to             eval/tool_log.jsonl.	Status: in progress: loop and company card are real; ratio and MD&A tools are stubs (src/tools_stub.py)
-   3. Capability: Retrieval over the MD&A. Where it fires:	search_mdna tool (needs MD&A extractor #10 and retrieval. Status:	not started          (stub passages only)
-   4. Capability: Structured output. Where it fires:	Pydantic response_schema in the contamination probes (eval/contamination.py); the            final prediction schema (direction, probability, three cited passages) is still free text in V1. Status:	working for probes, in             progress for the final answer
-   A first sketch of your architecture diagram (§5.2) — a photo of a whiteboard, committed and linked, is fine:
+The output is generated by a language model and can be wrong. It is not financial advice.
 
-(https://github.com/Vicen-75/Earnings-Oracle/blob/main/docs/architecture.png)
+## How it works
 
- 
-4. SUCCESS METRIC (§5.5)
-   The one number that says whether your app is doing its job: Directional accuracy, anonymized: the share of the 20 scored test companies     for which the predicted direction of FY2025 operating income (increase or decrease vs FY2024) matches the direction reported in the         FY2025 10-K, with company name, ticker and product names removed from everything the model sees. The app is doing its job if this beats     both the ratio-only baseline and "always increase" on the same 20. With n = 20, one company is 5 points, so the report will give counts     and say that a 1-company difference is not evidence. Full definition: docs/success_metric.md.
-   Where your test inputs will come from: FY2023 and FY2024 10-Ks from EDGAR (by accession number, listed in eval/test_set.csv) for            companies whose FY2025 10-K is already filed. Candidates are in eval/candidates.csv (24 large and mid-cap filers across industries); the    contamination test decides which of them make the final 20.
- 
- 
-5. PROOF OF CONCEPT — TWO TEST INPUTS
-   For each: the input · the result you expect, written before you run anything ·
-   if your app can already run it, what it returned.
-   Input A — an ordinary input your app should handle:  
-   HD (Home Depot), a large-cap non-financial that passed the contamination test (verdict OK, 0 quarters remembered, the model knows the       control year).
-   - Expected result (written before the run): The model calls get_company_card, then compute_general_ratios (not the financial-sector         set), then search_mdna with a query about demand or outlook, and returns a direction, a probability and a cited passage without             crashing. We did not use the known FY2025 result as our prediction.
-   - What it returned: Analysis for HD is under construction.
+![How a run flows through the code](docs/architecture.png)
 
-   Input B — an input you expect it to get wrong:
-   TSM (Taiwan Semiconductor Manufacturing, CIK 0001046179), a 20-F filer: EDGAR shows no 10-K filings, so list_10ks() should return an        empty list.
-   - Expected result (written before the run): The correct answer is "no data found". We expect the model may still give a direction and a     probability, because the stub ratio tools ignore the company and return canned numbers. If it does, we count it as wrong, and it becomes    a fix for the real ratio tools and the system prompt.
-   - What it returned: Analysis for TSM is under construction.
+The diagram is generated from `src/flowchart.py`, the same model drawn in the app's **How it works** tab, so it names real files and functions.
 
- 
-6. THE PLAN TO YOUR PRESENTATION
-   What is left to build, and who owns each piece (it should match your board):
-  
-   - Real ratio calculator, general and financial-sector (src/ratios.py): Vicente
-   - MD&A extractor (#10) and retrieval over the last two 10-Ks, with the "MD&A not found" fallback: Nicolas
-   - Final answer schema and parser (direction, probability, three cited passages): German
-   - Anonymizer (src/anonymize.py): German/Nicolas
-   - Ratio-only baseline (src/baseline.py) and the "always increase" rule: Javier
-   - Final 20-company eval/test_set.csv (finish contamination run, substitute tag for banks/insurers): Vicente    
-   - Connect the agent to the Streamlit app (replace the placeholder): Javier
-   - Backtest runs (named vs anonymized), PROMPT_V2 before/after, report and slides: All
-  
-   What you will cut first if you fall behind: first banks and insurers (no substitute tag); then the MD&A search becomes one fixed call while the     model keeps choosing the ratio set; then three cited passages become one.
- 
-7. WHAT YOU NEED FROM US
-   The one thing blocking you, or the question you want answered at your table: Our model's cutoff falls inside FY2025: 5 of our 24            candidates are contaminated and only 10 are usable so far. How many more companies should we add or drop, and how much should we lean on    anonymization, before the 20-company set stops being a fair test? Is anonymized accuracy plus the named-vs-anonymized gap enough            evidence that the model is reading and not remembering?
+1. **Before any model call**, `app.py` checks the ticker on EDGAR, serves a cached run if the ticker was analyzed in the last 6 hours, and enforces a cap of 10 new analyses per visitor. A waiting line (`src/run_limiter.py`) lets only a few analyses run at once across all visitors.
+2. **The main agent** (`src/agent.py`, prompt `TOOL_SYSTEM_V5`, Gemini 3.1 Flash-Lite) runs a ReAct loop with up to 9 tool calls. The model decides which tools to call and in what order.
+   - `get_company_card` gives industry (SIC), fiscal year end, filings and the target metric
+   - `get_industry_playbook` gives the ratios that matter for that industry (14 groups, 24 ratios)
+   - `compute_ratios` computes the ratios the model picked, from XBRL data
+   - `get_mdna` extracts and validates the MD&A section
+   - `locate_mdna` is a second agent that finds the MD&A through the filing's table of contents when the parser fails
+3. **Self-check.** The first answer is treated as a draft. The code asks once whether a ratio could test a claim in the MD&A, and the model either computes it or confirms.
+4. **Results.** The app shows the direction, probability, cited passages, the industry playbook and the ratio table, with a live trace of every step.
 
+Every model call goes through `src/key_pool.py`, which spreads analyses across several API keys and moves a run to another key when it hits a rate limit. An optional anonymizer (`src/anonymize.py`) replaces the company name, ticker, CIK and brand names with "the Company" in every tool result. It is used in anonymized test runs and is off in the app.
 
+## Results
+
+Pre-registered backtest on **200 randomly drawn US companies** (prompt V5, run Nov 5 to 6, named runs). Design, sampling and analysis were fixed before any run in [`docs/test_plan.md`](docs/test_plan.md). The model predicted the target year using only the filings before it, and every company passed the contamination test first.
+
+| Predictor | Correct | Accuracy (95% interval) |
+|---|---|---|
+| **Earnings Oracle** | 121 of 200 | **60%** (54% to 67%) |
+| Always increase | 126 of 200 | 63% (56% to 69%) |
+| Momentum (last year's direction) | 104 of 200 | 52% (45% to 59%) |
+| Reverse momentum | 96 of 200 | 48% (41% to 55%) |
+
+- The model **beats momentum and reverse momentum** (exact McNemar test, p = 0.036 and 0.043) but shows **no clear difference from always increase** (p = 0.58). By the bar we set in advance, it does not yet beat all three baselines.
+- **Citations are real.** 557 of 561 quoted passages (99%) are verbatim or near-verbatim text from the filings the model read, and none come from the hidden target-year filing.
+- **Main failure.** The model tends to carry last year's direction forward. 56 of its 75 answered misses are reversals it did not see coming. When it breaks from the trend it is right 67% of the time.
+- **Cost and speed.** About $0.03 and 50 seconds per analysis at paid-tier prices (the class app runs on the free tier).
+- **Not yet measured.** The success metric is anonymized accuracy and the anonymizer is built, but the 200-company run has not been repeated anonymized. A check on the 20 development companies found the anonymized text leak-free for 19 of 20, yet the model could still name the company for 17 of 20.
+
+Full reports: [backtest](eval/backtest_200_report.md) · [error analysis](eval/error_analysis_200.md) · [citation check](eval/citation_check_report.md) · [cost](eval/cost_report.md) · [load test](eval/load_test_report.md) · [contamination test](docs/contamination.md)
+
+## Run it locally
+
+```bash
+pip install -r requirements.txt
+mkdir -p .streamlit
+echo 'GEMINI_API_KEY = "your-key"' > .streamlit/secrets.toml
+streamlit run app.py
+```
+
+Optional secrets are `GEMINI_API_KEYS` (comma-separated list for the key pool), `MAX_CONCURRENT_RUNS` and `TEAM_PASSCODE` (unlocks the Tests tab). From the command line, `python -m src.agent CAT` runs one analysis and `python -m eval.run_backtest` runs a backtest.
+
+## Repository
+
+| Path | What is there |
+|---|---|
+| `app.py` | Streamlit app with three tabs (Analyze, Tests, How it works) |
+| `src/` | Agent, tools, prompts, EDGAR access, MD&A parser and locator, ratios, anonymizer, baselines, key pool, waiting line |
+| `eval/` | Test sets, backtest, contamination, citation, anonymizer, cost and load scripts, with their results and reports |
+| `docs/` | Proposal and feedback, success metric, test plan, tool-calling design, ratio directory, contamination test, architecture diagram |
+
+The workshop checkpoint submitted on Oct 22 is archived in [`docs/workshop_checkpoint.md`](docs/workshop_checkpoint.md).
+
+## Data sources
+
+- **SEC EDGAR** (public): ticker to CIK, submissions API, XBRL company facts and the 10-K documents. Requests carry the required User-Agent and are limited to 8 per second and cached.
+- **Gemini API** (`gemini-3.1-flash-lite`) for every model call.
+- No data about real, identifiable people.
