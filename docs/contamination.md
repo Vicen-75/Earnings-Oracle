@@ -1,8 +1,9 @@
 # Contamination test: does the model already remember the answer?
 
-Issue #42. Owner: Vicente (test design and first runs, Oct 19 to 23); Javier (quarter probe, 200-company sampler).
-Code: `eval/contamination.py`. Results: `eval/contamination_results.csv` (hand-picked candidates) and
-`eval/sample_checks.csv` (200-company sampler). 
+Issue #42. Owner: Vicente (test design and first runs, Oct 19 to 23; anonymizer check, Nov 12); Javier (quarter
+probe, 200-company sampler).
+Code: `eval/contamination.py`, `eval/anonymize_check.py`. Results: `eval/contamination_results.csv` (hand-picked
+candidates), `eval/sample_checks.csv` (200-company sampler) and `eval/anonymize_check_200.csv` (anonymizer check).
 
 ## Why
 
@@ -54,12 +55,54 @@ our accounts.
 year ending between 2025-07-01 and 2026-06-30. Of 222 checked, 205 passed, 13 failed on data and 4 on
 contamination (AAL, APD, DXCM, BDX, all through quarters). The 200 kept: 191 OK_BUT_UNKNOWN_COMPANY, 9 OK; 126 increase, 74 decrease.
 
+**Nov 12, can the model still tell which company it is? (set A, `eval/anonymize_check.py --set 200 --guess`).**
+For each of the 200 companies, the anonymized company card and MD&A (name, former names, ticker, CIK and brand names
+removed by `src/anonymize.py`) were shown to the model with one question: which company is this? (temperature 0,
+answer forced into a schema). Run from Colab; 7 companies that failed on Google overload or an unreadable answer were
+run again, and CHE has no MD&A the locator can find.
+
+| Measure | Result |
+|---|---|
+| Companies checked | 199 of 200 |
+| Leak-free (no name, ticker, CIK or detected brand left in what the model sees) | 194 of 199 (97.5%) |
+| Model names the company from the anonymized text | **169 of 199 (85%)**, always saying it is confident |
+
+When it is wrong it usually names a direct competitor (Royal Caribbean read as Carnival, Cigna as CVS, Patterson-UTI as
+Helmerich & Payne). The same check on the 20 development companies on Nov 6 gave 17 of 20.
+
+This puts a number on the first limit below: in the contamination probes the model said it did not know 191 of these
+200 companies, yet it names 169 of them from their own MD&A. Hiding the name does not hide the company.
+
+**Does knowing the company help the model? (exploratory, V5 named run on set A, `eval/backtest_200_results.jsonl`).**
+If memory were driving the score, the model should do better where it can recognize the company, and where the
+target year ended before its knowledge ends. It does not:
+
+| Group | Companies | Model correct | Always increase |
+|---|---|---|---|
+| Company named from the anonymized text | 169 | 60% | 65% |
+| Company not named | 30 | **67%** | 57% |
+| Target year ending Jul to Dec 2025 | 165 | 60% | 61% |
+| Target year ending Jan to Jun 2026 | 35 | **63%** | 74% |
+
+The groups are small and were not fixed in advance, so this is a hint, not a result.
+
+**Nov 12, a bug found by this check.** The brand scan sometimes returned ordinary words or bare numbers as brands:
+"our" for CLMT and NXH, "3000", "5000" and "5400" for CIEN. They passed the filter, so every "our" and those numbers
+became "[PRODUCT]" in the text the model read. Fixed in `src/anonymize.py` (numbers and lowercase words of four letters
+or fewer are never kept as brands; longer lowercase names such as ecosio or landsend.com still are). No named run is
+affected: the anonymizer is off unless asked for, and every named run on file has `anonymized: false`. The check above
+ran before the fix; leaks and guesses are not affected by it.
+
 ## What it changed in the project
 
 1. Contaminated companies never enter a test set.
 2. The quarter probe is part of the gate, not just the full-year question.
 3. Banks, insurers and other firms without an operating income line use pre-tax income as the target (`edgar.choose_target`).
 4. A second check that does not rely on the model's own word is still needed: the anonymized run (#41).
+5. (Nov 12) The anonymized run cannot stand on its own, because the model still recognizes 85% of the companies. The
+   main defense is time: the target years end after the latest period the model remembers, and the contamination gate
+   removes companies whose target-year quarters it does remember. `eval/named_vs_anon.py` splits the named vs
+   anonymized comparison into companies the model can and cannot identify; the second group is the cleaner test.
 
 ## Limits
 
@@ -68,6 +111,8 @@ contamination (AAL, APD, DXCM, BDX, all through quarters). The 200 kept: 191 OK_
   companies in the world.
 - **OK_BUT_UNKNOWN_COMPANY is 95.5% of the 200-company set (191 of 200).** For those the control probe tells us nothing: we cannot
   separate "the model does not know this company" from "the model is being cautious". This is the main weakness.
+  The anonymizer check (Nov 12) shows the model can name 85% of these companies from their MD&A, so "unknown company"
+  mostly means "cautious", not "unknown".
 - **Excluding remembered companies tilts the sample toward less famous firms.** Results hold for companies the model
   did not remember, not for the whole market.
 - **It cannot see indirect knowledge:** news, guidance or analyst comments about the target year that never mention
@@ -79,4 +124,5 @@ contamination (AAL, APD, DXCM, BDX, all through quarters). The 200 kept: 191 OK_
 python -m eval.contamination              # the candidates in eval/candidates.csv; resumes, retries failed ones
 python -m eval.contamination --fresh      # ignore previous results and check every candidate again
 python -m eval.contamination AAPL MSFT    # quick check, nothing saved
+python -m eval.anonymize_check --set 200 --guess   # leaks and "which company is it?" on set A (about 2 calls each)
 ```
