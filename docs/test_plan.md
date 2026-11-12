@@ -175,3 +175,125 @@ test.
 
 **Known limits.** As the first ablation. In addition, the MD&A itself reports last year's figures, so this measures
 what the computed, comparable ratios add, not what numbers add in general.
+
+### Nov 11, 2026: V6 and its component ablation on set B (issue #45)
+
+Written before V6 is frozen and before any V6 run on set B. Completes the Nov 10 set B note: what V6 is, how its call
+is made, and a secondary test of which of its parts matter. The main result, the two stages and their thresholds are
+unchanged.
+
+**What V6 is.** Prompt V6 (`src/prompts.py`, `build_v6`) and the agent at the commit tagged `v6-frozen`. Changes from
+V5, one switch per component:
+
+| # | Component | In the code |
+|---|---|---|
+| 1 | Structured pass over the MD&A | the `read_mdna_items` tool lists guidance, last year's one-offs, headwinds, tailwinds and segment trends, each with a quote checked word for word against the MD&A (`src/mdna_items.py`); the model chooses whether to call it, `get_mdna` stays |
+| 2 | One-off adjustment | a paragraph: judge next year against last year with unusual gains and charges set aside |
+| 3 | Downward rules | replaces V5's "weigh the evidence" paragraph: a trend alone justifies neither a call nor a probability above 0.60; a concrete near-term negative is sized against the positives; the strongest evidence against is never "none" |
+| 4 | Three runs, averaged | each company runs three times at temperature 1.0 (`src/consensus.py`) |
+| 5 | Decision rule | the prompt asks for the direction the model would take even odds on; the averaged probability of an increase decides the call, and a tie goes to decrease. No threshold is tuned |
+| 6 | Empty-answer fallback | #60 |
+
+V5 and every earlier prompt keep temperature 0 and never see the new tool. Nothing in V6 is a number learned from set
+A's or set B's outcomes: no base rate, no industry rate, no threshold.
+
+**V6's call on a company.** Each run's direction and probability become a probability of an increase (p for an
+increase call, 1 - p for a decrease call). The mean over the runs that gave both a direction and a probability decides:
+increase above 0.5, decrease at or below it. If no run gives both, the company has no answer and counts as wrong. A run
+stopped by a quota or network error is retried with the company's other runs. The main result in the Nov 10 note uses
+this call.
+
+**Component ablation (secondary, not part of the main test).**
+
+| Arm | V6 with this removed | Compared with | Extra runs on set B |
+|---|---|---|---|
+| Self-consistency | run 1 alone | V6's averaged call | none: same records |
+| Decision rule | majority vote of the three directions (a tie of one against one, when a run fails, goes to decrease) | V6's averaged call | none: same records |
+| Downward rules | V5's "weigh the evidence" paragraph back (`--ablation no_downward`) | V6 run 1 | 200 |
+| One-off adjustment | the one-off paragraph removed (`--ablation no_oneoff`) | V6 run 1 | 200 |
+| Structured pass | the `read_mdna_items` tool removed; the V6 rules work inside V5's agent loop (`--ablation no_structured`) | V6 run 1 | 200 |
+
+- Each arm runs once per company on all 200 companies of set B, blind like the main run, at V6's temperature and with
+  the same frozen code. Results: `eval/ablation_b_<arm>_results.jsonl`.
+- **Test.** For each arm, exact two-sided McNemar test of correct answers against its comparison, on all 200
+  companies. Holm correction across the five arms, family-wise alpha 0.05. A missing answer counts as wrong.
+- **When.** Only after stage 2 is analysed. The arms may run before that, but no arm's accuracy is looked at earlier.
+- **Also reported, descriptive only:** for each arm, the number of decrease calls and how many were right, how many
+  answers say the strongest evidence against is "none", and median tokens and seconds per run.
+- **If keys run short,** arms run in this order: downward rules, one-off adjustment, structured pass. An arm that does
+  not finish all 200 companies is reported as not run, not on part of the set.
+
+**Known limits.** At temperature 1.0 two runs of the same version disagree on some companies by chance, so each arm's
+difference must exceed run-to-run variation to show up; with 200 companies, small effects will read as "no clear
+difference". Removing the one-off paragraph leaves `read_mdna_items` listing one-offs as information; the arm measures
+the instruction, not the information. The structured-pass arm changes how the MD&A is read, not whether it is read.
+
+### Nov 11, 2026 (later): V7, and the choice between V6 and V7 on set C
+
+Written before set C is drawn and before any V6 or V7 run on it. Amends the two notes above: set B will score
+whichever of V6 and V7 this choice picks, not V6 by default.
+
+**Why.** V6 was tried on set A after the note above was written (one run per company, exploratory and in-sample:
+128 of 199, V5 120, always-increase 125; `eval/error_analysis_v6.md`). Reading its errors showed two reasoning
+mechanisms behind most wrong decrease calls. Set A has now informed the design twice, so set A cannot judge the
+result; a fresh set does.
+
+**V7.** V6 plus four reasoning rules, each on its own switch (`src/prompts.py`, `build_v7`): planned cost increases
+count against income only if they outgrow revenue; ratios that worsened last year are part of the trend unless
+management ties them to next year; the target is the reported figure, so one-offs move it; divestitures and
+acquisitions change the income base. Same tools, temperature and three-run averaging as V6. Nothing in V7 is fitted
+to an outcome: no threshold, base rate, industry rule or nudge toward a direction. On the development set V7 made the
+same 20 calls as V6.
+
+**Set C.** Same universe, shuffled order, gates, definitions and truth rule as sets A and B. It starts after set B's
+last company (universe order 433) and skips the development set, set A and set B. The first 200 companies that pass
+both gates form set C (`python -m eval.build_test_set check --set c`; `eval/test_set_200c.csv`).
+
+**The choice.** V6 and V7 each run once per company on set C, blind (progress only). The version with more correct
+answers is frozen and scored on set B; a tie goes to V6. A finished run with no direction counts as wrong; a run
+stopped by a quota or network error is retried. The choice is made by `python -m eval.choose_version` only after
+both versions have finished all 200; the McNemar comparison it prints is descriptive. Set C is used for this one
+decision and never again, and no change is made to either version after its first set C run starts.
+
+**Still to be fixed before set B runs** (a dated note): the tag of the frozen version, the new date of stage 1, and
+the component ablation arms for the chosen version (for V7, also an arm with the four V7 rules switched off).
+
+### Nov 12, 2026: set C chose V6; V6 is frozen for set B
+
+Written after the set C choice and before any run on set B. Completes the notes above.
+
+**Set C result** (`python -m eval.choose_version`; `eval/setc_results.jsonl`). V6 132 of 200, V7 129; they disagreed
+on 23 companies (V6 only right 13, V7 only right 10; McNemar p = 0.68, descriptive). By the rule fixed before set C
+was drawn, V6 is frozen. V7 stays in the code with its switches, as a documented attempt; it is not run on set B. Set
+C is not used again.
+
+**What is scored on set B.** V6, as defined in the Nov 11 note: prompt V6, the `read_mdna_items` tool, temperature
+1.0, three runs per company averaged (`src/consensus.py`), the #60 fallback. Before the first set B run,
+`eval/run_set_b.py` writes the SHA-256 of every file V6 depends on (all of `src/`, the runner, set B's list and this
+plan) to `eval/v6_frozen_manifest.txt`, and it stops if any of them changes before a later step. The commit tagged
+`v6-frozen` must contain exactly those files; nothing changes after it.
+
+**Main result and stages.** Unchanged from the Nov 10 note: V6 against each of the three baselines, exact two-sided
+McNemar; stage 1 on the first 100 companies at p < 0.005, stage 2 on all 200 at p < 0.048. Stage 1 runs from Nov 12
+and is analysed once all 100 are done; if that happens before the Nov 16 presentation it is reported there,
+otherwise the presentation reports it as pending. Stage 2 is reported in the Nov 30 report.
+
+**Secondary test: V6 against V5** (replaces the Nov 10 note's descriptive "if keys allow" comparison). V5, unchanged
+(prompt V5, temperature 0, one run per company), runs blind on all 200 companies of set B. V6's averaged call against
+V5's call, exact two-sided McNemar on correct answers, p < 0.05, examined only after stage 2, together with the main
+result. A missing answer counts as wrong for both. Not part of the "beats the baselines" claim. Power, stated up front:
+on set A the two disagreed on 46 of 199 companies; with that many disagreements V6 needs about 31 of them (against 15)
+for p < 0.05, so "no clear difference" is the likely outcome unless V6 is much better.
+
+**Component ablation.** The five arms of the Nov 11 note, for V6, unchanged: self-consistency and decision rule from
+V6's own records; downward rules, one-off adjustment and structured pass as one-run arms (`--ablation no_downward`,
+`no_oneoff`, `no_structured`). Holm across the five arms, examined only after stage 2.
+
+**Run order, if keys run short:** V6 stage 1, V6 stage 2, V5, then the ablation arms in the order downward rules,
+one-off adjustment, structured pass. A comparison whose runs do not finish on all 200 companies is reported as not
+run.
+
+**Commands** (all of them in order, unattended: `python -m eval.run_set_b`; each one blind on set B):
+- `python -m eval.run_backtest --set b --prompt V6 --limit 100` (stage 1), then without `--limit` (stage 2)
+- `python -m eval.run_backtest --set b --prompt V5`
+- `python -m eval.run_backtest --set b --prompt V6 --ablation no_downward` (and `no_oneoff`, `no_structured`)
