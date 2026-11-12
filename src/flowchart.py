@@ -5,6 +5,9 @@
 #   C. React Flow through the streamlit-flow-component package: draggable boxes, zoom, minimap, controls.
 # Nov 5, second pass: every path ends at Results (side branches excepted), tool results come back as an Observation,
 # both agent loops are drawn as shaded regions, three line styles, and a legend.
+# Nov 12 (German): brought in line with the code as of PR #67: session cap and waiting line (run_limiter), the API
+# key pool between the agents and Gemini (key_pool), the anonymizer on tool results (anonymize, off in the app),
+# and the one retry on an empty reply.
 # Keep NODES and EDGES in sync with the code: they name real files and functions.
 import html
 import json
@@ -17,6 +20,7 @@ CATEGORIES = {
     "prompts": ("src/prompts.py, src/llm.py: prompts and model client", "#EFE6FF", "#7B57C9"),
     "tool":    ("Tools the model can call (file named in each box)", "#E2F5E9", "#2E9A5C"),
     "locate":  ("src/locate_mdna.py: the MD&A locator agent", "#DDF3F2", "#1F8A84"),
+    "anon":    ("src/anonymize.py: the anonymizer (anonymized test runs only)", "#FDE8EC", "#C2416B"),
     "ext":     ("External services", "#F2F2F2", "#8A8A8A"),
 }
 
@@ -33,16 +37,19 @@ NODES = [
     ("input",   "app",    "app.py",               "Ticker or example",    "st.form · pick_example()",           "The user starts a run", "", (0, 0)),
     ("load",    "app",    "app.py",               "EDGAR check",          "load_company()",                     "Ticker known? 10-K filings?", "", (330, 0)),
     ("cache",   "app",    "app.py",               "6-hour cache",         "cached_analysis()",                  "Analyzed recently?", "", (660, 0)),
+    ("limit",   "app",    "app.py · src/run_limiter.py", "Session cap and waiting line", "MAX_REQUESTS_PER_SESSION · waiting_line()", "10 new analyses per visitor; a few runs at once, the rest queue", "", (990, 0)),
     ("prompts", "prompts", "src/prompts.py",      "System prompt",        "TOOL_SYSTEM_V5",                     "How the agent should investigate", "", (160, 300)),
     ("llm",     "prompts", "src/llm.py",          "Model client",         "client · MODEL",                     "gemini-3.1-flash-lite, thinking LOW", "", (160, 460)),
     ("inv",     "agent",  "src/agent.py",         "Start the run",        "investigate(ticker, prompt='V5')",   "Builds the conversation", "main", (560, 200)),
-    ("think",   "agent",  "src/agent.py",         "Think and decide",     "_generate()",                        "Gemini writes a thought, then calls tools or answers", "main", (860, 200)),
-    ("run",     "agent",  "src/agent.py",         "Run the chosen tool",  "IMPL[tool](**args)",                 "One or more tools per turn", "main", (560, 420)),
+    ("think",   "agent",  "src/agent.py",         "Think and decide",     "_generate()",                        "Gemini writes a thought, then calls tools or answers; an empty reply is asked once more", "main", (860, 200)),
+    ("run",     "agent",  "src/agent.py",         "Run the chosen tool",  "IMPL[tool] (**args)",                 "One or more tools per turn", "main", (560, 420)),
     ("obs",     "agent",  "src/agent.py",         "Observation",          "observe()",                          "Tool result goes back to the model", "main", (860, 420)),
     ("draft",   "agent",  "src/agent.py",         "Draft answer",         "_draft_summary()",                   "Model answers without a tool", "main", (1200, 200)),
     ("check",   "agent",  "src/agent.py",         "Self-check",           "SELF_CHECK",                         "Could a ratio test a claim in the MD&A?", "main", (1200, 420)),
     ("final",   "agent",  "src/agent.py",         "Final answer",         "",                                   "Direction, probability, signals, passages", "main", (1200, 640)),
-    ("gemini",  "ext",    "",                     "Gemini API",           "",                                   "Every model call", "", (1640, 200)),
+    ("keys",    "prompts", "src/key_pool.py",     "API key pool",         "pool.generate()",                    "One key per analysis; moves to another key on rate limits", "", (1640, 200)),
+    ("gemini",  "ext",    "",                     "Gemini API",           "",                                   "Every model call", "", (1640, 420)),
+    ("anon",    "anon",   "src/anonymize.py",     "Anonymizer (optional)", "Anonymizer.unalias() · scrub()",    "Off in the app. Name, ticker, CIK, brands become 'the Company'", "", (160, 640)),
     ("trace",   "app",    "app.py",               "Live trace",           "TraceWriter",                        "One step per model call, as it happens", "", (1640, 640)),
     ("result",  "app",    "app.py",               "Results",              "show_result()",                      "Headline, answer, playbook, ratio table", "", (1640, 860)),
     ("log",     "agent",  "src/agent.py",         "Run log",              "_write_log()",                       "eval/app_runs.jsonl, eval/tool_log.jsonl", "", (1640, 1060)),
@@ -66,12 +73,14 @@ EDGES = [
     ("load", "cache", "found", "flow"),
     ("load", "result", "not found or 20-F: message, no model call", "flow"),
     ("cache", "result", "yes: cached run", "flow"),
-    ("cache", "inv", "no", "flow"),
+    ("cache", "limit", "no", "flow"),
+    ("limit", "inv", "slot free", "flow"),
     ("inv", "think", "", "flow"),
     ("think", "run", "tool call(s)", "flow"),
     ("run", "card", "", "flow"), ("run", "pb", "", "flow"), ("run", "cr", "", "flow"), ("run", "gm", "", "flow"),
     ("run", "lm", "if get_mdna failed", "flow"),
     ("card", "obs", "", "flow"), ("pb", "obs", "", "flow"), ("cr", "obs", "", "flow"),
+    ("run", "anon", "anonymized runs", "data"), ("anon", "obs", "scrubbed result", "data"),
     ("gm", "val", "", "flow"), ("val", "obs", "section, or not found", "flow"),
     ("lm", "outline", "", "flow"), ("outline", "ldecide", "", "flow"),
     ("ldecide", "peek", "peek", "flow"), ("peek", "ldecide", "", "flow"),
@@ -82,7 +91,8 @@ EDGES = [
     ("check", "run", "yes: compute that ratio", "flow"), ("check", "final", "no: covered", "flow"),
     ("final", "trace", "", "flow"), ("trace", "result", "", "flow"),
     ("prompts", "think", "", "data"), ("llm", "think", "", "data"),
-    ("think", "gemini", "", "data"), ("ldecide", "gemini", "", "data"),
+    ("think", "keys", "", "data"), ("ldecide", "keys", "", "data"), ("anon", "keys", "brand scan", "data"),
+    ("keys", "gemini", "", "data"),
     ("obs", "trace", "each step, live", "data"), ("final", "log", "", "data"),
     ("load", "sec", "", "data"), ("card", "sec", "", "data"), ("cr", "sec", "", "data"), ("gm", "sec", "", "data"),
     ("outline", "sec", "", "data"),
@@ -99,7 +109,7 @@ LINE_STYLES = {
 LEGEND = [
     ("app.py", "Streamlit page: input, EDGAR check before any model call, 6-hour cache, live trace, results."),
     ("src/agent.py", "Main agent: tool definitions, the ReAct loop, the self-check turn, observations, logs."),
-    ("src/prompts.py", "Versioned system prompts (V3, V4, V5) and the locator's prompt."),
+    ("src/prompts.py", "Versioned system prompts (V3, V4, V5; V5 the default) and the locator's prompt."),
     ("src/llm.py", "Model name and the simple one-call helper used by eval scripts."),
     ("src/key_pool.py", "Several API keys from different projects: one key per analysis, failover on rate limits."),
     ("src/run_limiter.py", "Waiting line: a few analyses run at once across all visitors; the rest see their place."),
@@ -108,7 +118,8 @@ LEGEND = [
     ("src/ratios.py", "Computes the ratios the model picks from XBRL data; flags growth beyond +/-50%."),
     ("src/mdna.py", "MD&A parser: headings vs contents vs cross-references, and validate_section()."),
     ("src/locate_mdna.py", "Locator agent: finds the MD&A through the filing's table of contents when the parser fails."),
-    ("src/baseline.py", "The two baselines the model must beat: momentum (last year's direction) and always increase."),
+    ("src/anonymize.py", "Anonymizer for test runs: removes name, ticker, CIK and brands from every tool result."),
+    ("src/baseline.py", "The three baselines the model must beat: always increase, momentum (last year's direction), reverse momentum."),
     ("src/backtest.py", "Tests tab: loads eval/test_set.csv, runs one test with FY2025 hidden, scores it."),
     ("src/flowchart.py", "This tab: the flow model, drawn as a Mermaid diagram or a React Flow graph."),
 ]
@@ -218,11 +229,12 @@ def mermaid_html(height=900):
 # --- 3. Option C: React Flow (streamlit-flow-component) ---------------------------------------------------------
 # Handles: which side of a box its arrows leave from / arrive at (default: leave at the bottom, arrive at the top).
 HANDLES = {
-    "input": ("right", "left"), "load": ("right", "left"), "cache": ("bottom", "left"),
+    "input": ("right", "left"), "load": ("right", "left"), "cache": ("right", "left"),
     "prompts": ("right", "left"), "llm": ("right", "left"),
+    "limit": ("bottom", "left"), "keys": ("bottom", "left"), "anon": ("right", "right"),
     "inv": ("right", "top"), "think": ("bottom", "left"), "run": ("bottom", "top"), "obs": ("top", "bottom"),
     "draft": ("bottom", "left"), "check": ("bottom", "top"), "final": ("right", "top"),
-    "gemini": ("bottom", "left"), "trace": ("bottom", "left"), "result": ("bottom", "left"),
+    "gemini": ("bottom", "top"), "trace": ("bottom", "left"), "result": ("bottom", "left"),
     "peek": ("bottom", "right"), "extract": ("left", "right"),
 }
 
