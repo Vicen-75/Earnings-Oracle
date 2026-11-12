@@ -371,8 +371,10 @@ def how_it_works_tab():
 # --- Tests tab (Nov 5): the 20-company backtest ----------------------------------------------------------------
 @st.cache_resource
 def tests_store():
-    """Shared across visitors while the app runs: {ticker: result of src.backtest.run_test}. Lost on restart."""
-    return {}
+    """Shared across visitors while the app runs: {"named" or "anonymized": {ticker: result of src.backtest.run_test}}.
+    Named and anonymized results are kept apart (Nov 12), so switching the toggle shows that mode's own scoreboard.
+    Lost on restart."""
+    return {"named": {}, "anonymized": {}}
 
 
 @st.cache_data(ttl=24 * 3600, show_spinner="Computing the baselines from EDGAR (first time only)...")
@@ -399,7 +401,11 @@ def tests_tab():
     except FileNotFoundError:
         st.error("eval/test_set.csv not found.")
         return
-    store = tests_store()
+    anonymize = st.session_state.get("tests_anon", False)         # the toggle below; read first, it picks the store
+    store = tests_store()["anonymized" if anonymize else "named"]
+    if anonymize:
+        st.info("Anonymized mode: the model sees \"the Company\" instead of the name, ticker, CIK and brand names "
+                "(src/anonymize.py). Results here are kept apart from the named ones.")
     try:
         base = all_baselines(tuple(r["ticker"] for r in rows))
     except Exception:
@@ -418,8 +424,9 @@ def tests_tab():
     with left:
         code = st.text_input("Team passcode", type="password", key="tests_passcode",
                              help="Running tests spends the shared Gemini free tier.")
-        st.toggle("Anonymized (company names hidden)", value=False, disabled=True,
-                  help="Not available yet: the anonymizer (src/anonymize.py) is not built. Tests run with names.")
+        st.toggle("Anonymized (company names hidden)", key="tests_anon",
+                  help="Hides the company's name, ticker, CIK and brand names from the model (src/anonymize.py), "
+                       "to test whether it reads the filings or remembers the company. Adds one model call per test.")
     unlocked = bool(secret) and code == secret
     if not secret:
         left.caption("No TEAM_PASSCODE in the app's secrets: tests cannot be run here.")
@@ -442,7 +449,7 @@ def tests_tab():
     elif run:
         queue = [r for r in rows if r["ticker"] == pick]
     if queue:
-        run_queue(queue, lambda running: draw_results(board, table_box, rows, store, base, running))
+        run_queue(queue, store, anonymize, lambda running: draw_results(board, table_box, rows, store, base, running))
         st.rerun()
 
     # Trace of a finished test
@@ -521,13 +528,12 @@ def draw_results(board, table_box, rows, store, base, running=None):
     table_box.dataframe(styled, hide_index=True, width="stretch", height=38 + 35 * len(df))
 
 
-def run_queue(queue, redraw=None):
+def run_queue(queue, store, anonymize=False, redraw=None):
     """Run the queued tests one by one. Each result is stored as soon as it finishes, so a stall or an interruption
     only loses the test in progress. Clicking other buttons while this runs restarts the page and stops the queue."""
     from src.agent import APP_LOG_PATH, investigate
     from src.backtest import run_test
     from src.run_limiter import waiting_line
-    store = tests_store()
     st.warning("Tests are running. Keep this tab open and avoid clicking other controls until they finish.")
     progress = st.progress(0.0, text=f"0 of {len(queue)} done")
     for i, row in enumerate(queue):
@@ -547,7 +553,8 @@ def run_queue(queue, redraw=None):
             try:
                 with waiting_line.slot(on_wait):      # tests share the waiting line with visitors (Nov 6)
                     status.update(label=f"{row['ticker']}: the model is investigating (FY2025 hidden)...")
-                    res = run_test(row, investigate, parse_headline, on_event=on_event, log_path=APP_LOG_PATH)
+                    res = run_test(row, investigate, parse_headline, on_event=on_event, log_path=APP_LOG_PATH,
+                                   anonymize=anonymize)
                 store[row["ticker"]] = res
                 status.update(label=f"**{row['ticker']}**: model {res['direction'] or 'no answer'}, truth "
                                     f"{row['truth']} · {verdict_badge(res['correct'])}",
