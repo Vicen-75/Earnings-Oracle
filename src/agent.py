@@ -280,6 +280,8 @@ def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, 
 
     def finish(answer):
         usage["billed"] = pool.usage()            # every call of the run, thinking tokens included (issue #55)
+        if anon:                                  # Nov 12 (#41): "ok", "failed (...)" or "not run"; a failed scan means
+            usage["brand_scan"] = anon.brand_scan  # brands stayed visible, so the anonymized run can redo that company
         if write_log:
             _write_log(ticker, log, answer, usage, anonymize, prompt, log_path or LOG_PATH, skip_newest, ablation)
         return {"answer": answer, "steps": log, "results": results, "usage": usage, "prompt": prompt}
