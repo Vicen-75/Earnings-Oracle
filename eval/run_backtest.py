@@ -30,6 +30,10 @@
 # --ablation <arm> runs one arm of V6's component ablation, blind, once per company (docs/test_plan.md):
 #   python -m eval.run_backtest --set dev --prompt V6
 #   python -m eval.run_backtest --set b --prompt V6 --ablation no_downward
+#
+# Nov 13, set D (docs/test_plan.md): --set d runs eval/test_set_400d.csv, blind, and writes eval/setd_results.jsonl and
+# eval/setd_runs.jsonl. V6 runs once per company there (the plan says so), unless --runs says otherwise.
+#   python -m eval.run_backtest --set d --prompt V6 --runs 1
 import functools
 import json
 import sys
@@ -110,6 +114,14 @@ def main(args):
         RESULTS_PATH = Path("eval/setc_results.jsonl")
         RUN_LOG_PATH = Path("eval/setc_runs.jsonl")
         print(f"Set C, blind: progress and errors only. Writing {RESULTS_PATH}.")
+    elif which == "d":
+        # Nov 13: set D, 400 fresh companies, V6 with one run per company (docs/test_plan.md). Blind: progress only;
+        # accuracy is looked at once, by python -m eval.analyze_set_d, after all 400 are done.
+        blind = True
+        TEST_SET_PATH = Path("eval/test_set_400d.csv")
+        RESULTS_PATH = Path("eval/setd_results.jsonl")
+        RUN_LOG_PATH = Path("eval/setd_runs.jsonl")
+        print(f"Set D, blind: progress and errors only. Writing {RESULTS_PATH}.")
     elif blind:
         TEST_SET_PATH = Path("eval/test_set_200b.csv")
         RESULTS_PATH = Path(f"eval/ablation_b_{ablation}_results.jsonl" if ablation else "eval/backtest_200b_results.jsonl")
@@ -128,7 +140,7 @@ def main(args):
         print(f"Ablation {ablation} on set A: {RESULTS_PATH}")
     prompt = args[args.index("--prompt") + 1] if "--prompt" in args else DEFAULT_PROMPT
     # V6 and V7 average three runs; an ablation arm is compared with V6's first run, so it runs once (docs/test_plan.md)
-    runs = int(args[args.index("--runs") + 1]) if "--runs" in args else (3 if prompt in ("V6", "V7") and not ablation else 1)
+    runs = int(args[args.index("--runs") + 1]) if "--runs" in args else (3 if prompt in ("V6", "V7") and not ablation and which != "d" else 1)
     limit = int(args[args.index("--limit") + 1]) if "--limit" in args else None
     rows = load_test_set(TEST_SET_PATH)
     finished = done_tickers(prompt)
@@ -163,7 +175,7 @@ def main(args):
     done = i - errors
     if blind:
         print(f"\nThis run: {done} finished, {errors} errors (run again to retry them). Accuracy is looked at only "
-              "at the two stages in docs/test_plan.md.")
+              "as docs/test_plan.md says.")
         return
     print(f"\nThis run: {correct} of {done} correct, {errors} errors (run again to retry them). "
           + (f"Report: python -m eval.dev_check --prompt {prompt}" if which == "dev" else

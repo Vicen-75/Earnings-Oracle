@@ -35,6 +35,11 @@
 # Same gates and order; starts after set B's last company (universe order 433) and skips the development set, set A
 # and set B. Writes eval/sample_checks_c.csv and eval/test_set_200c.csv.
 #   python -m eval.build_test_set check --set c
+#
+# Nov 13, set D (docs/test_plan.md): 400 fresh companies for one more test of V6, with one run per company. Same gates
+# and order; starts after set C's last company (universe order 651) and skips the development set and sets A, B and C.
+# Writes eval/sample_checks_d.csv and eval/test_set_400d.csv.
+#   python -m eval.build_test_set check --set d
 import csv
 import random
 import sys
@@ -59,7 +64,10 @@ EXCLUDED = set()                            # set B: the development set's ticke
 SETS = {"b": {"checks": Path("eval/sample_checks_b.csv"), "test": Path("eval/test_set_200b.csv"), "start_after": 217,
               "exclude": [Path("eval/test_set_200.csv")]},
         "c": {"checks": Path("eval/sample_checks_c.csv"), "test": Path("eval/test_set_200c.csv"), "start_after": 433,
-              "exclude": [Path("eval/test_set_200.csv"), Path("eval/test_set_200b.csv")]}}
+              "exclude": [Path("eval/test_set_200.csv"), Path("eval/test_set_200b.csv")]},
+        "d": {"checks": Path("eval/sample_checks_d.csv"), "test": Path("eval/test_set_400d.csv"), "start_after": 651,
+              "size": 400, "exclude": [Path("eval/test_set_200.csv"), Path("eval/test_set_200b.csv"),
+                                       Path("eval/test_set_200c.csv")]}}
 
 REVENUE_TAGS = ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
                 "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueNet",
@@ -256,8 +264,9 @@ def status():
 
 def use_set(name):
     """Point the check and status steps at set B's files (set A stays the default, unchanged)."""
-    global CHECKS_PATH, TEST_SET_PATH, START_AFTER_ORDER, EXCLUDED
+    global CHECKS_PATH, TEST_SET_PATH, START_AFTER_ORDER, EXCLUDED, TARGET_SIZE
     chosen = SETS[name]
+    TARGET_SIZE = chosen.get("size", TARGET_SIZE)          # set D: 400 companies
     CHECKS_PATH, TEST_SET_PATH, START_AFTER_ORDER = chosen["checks"], chosen["test"], chosen["start_after"]
     EXCLUDED = {r["ticker"] for r in _read(DEV_SET_PATH)}
     for path in chosen["exclude"]:

@@ -297,3 +297,52 @@ run.
 - `python -m eval.run_backtest --set b --prompt V6 --limit 100` (stage 1), then without `--limit` (stage 2)
 - `python -m eval.run_backtest --set b --prompt V5`
 - `python -m eval.run_backtest --set b --prompt V6 --ablation no_downward` (and `no_oneoff`, `no_structured`)
+
+### Nov 13, 2026: set D, 400 fresh companies for V6 with one run
+
+Written after set B was analysed and before any company of set D is checked or run. Drafted with help from Claude; the
+decisions are the team's.
+
+**What is already known.** Set B, the pre-registered test: V6 135 of 200 against 123 for always increase (V6 only
+right 46, always increase only right 34, p = 0.22), so V6 does not beat all three baselines. Set C, used to choose V6
+over V7: V6 132 of 200 against 121 (42 against 31). On both sets V6 is about 6 points ahead, and neither result rules
+out chance. Set B's ablation: one run alone scores the same as three runs averaged (135 and 135) at a third of the
+cost (`eval/set_b_cost_variation_report.md`).
+
+**Why set D.** One more test of whether V6 beats the baselines, on twice as many companies, and a tighter estimate of
+how large the edge over always increase is.
+
+**Companies.** The universe order (`eval/universe.csv`, fixed on Nov 5) continues from position 652, after the last
+position checked for set C, through the same data and contamination gates as sets A, B and C
+(`python -m eval.build_test_set check --set d`), until 400 companies pass. Companies of the development set and of
+sets A, B and C are skipped. Every company tried is recorded in `eval/sample_checks_d.csv`; the accepted 400 are
+`eval/test_set_400d.csv`. The runs start only when that list is final.
+
+**What is scored.** V6 exactly as frozen for set B: the same prompt, tools and temperature (1.0), and the files under
+`src/` must match `eval/v6_frozen_manifest.txt`, which the runner checks before every step. One difference, decided
+here: one run per company instead of three averaged, because the set B ablation showed no gain from averaging and one
+run is what the app would use. The runner is blind: it prints progress only.
+
+**The test, one look.** When all 400 companies have a finished result: V6 against each of the three baselines on set
+D alone, exact two-sided McNemar on correct answers, significant at p < 0.05. V6 beats the baselines only if it is
+significantly better than all three. A company with no answer counts as wrong. No interim look, no early stop, and no
+companies added afterwards. If the 400 runs are not complete, the test is reported as not run.
+
+**Combined view, descriptive.** Sets B (run 1 of its three), C and D together: 800 companies V6 was not tuned on, one
+run each, with the difference from always increase and an approximate 95% interval. This is not a second test. Sets B
+and C were already known to favour V6 when this note was written (together: V6 only right 88, always increase only
+right 65), so a combined p-value would cross 0.05 far more often than one time in twenty even with no real edge. The
+combined numbers estimate the size of the edge; the verdict is the test on set D alone.
+
+**Power, stated up front.** If V6's true edge over always increase is the 6 points seen so far and the two disagree on
+about 40% of companies, set D alone reaches p < 0.05 somewhat less than half the time. "No clear difference" is a
+likely outcome even if the edge is real.
+
+**Timing.** If the runs finish and the analysis is done before the `presentation` tag on Nov 16, the result is
+presented; otherwise it is reported as pending and goes in the Nov 30 report.
+
+**Commands.** `python -m eval.run_set_d` (the set, then the runs, unattended; it does not start until this note and
+the code are committed), then `python -m eval.analyze_set_d`, once.
+
+**Files that were in the set B freeze.** `eval/run_backtest.py` gains a set D mode and this plan gains this note. Set
+B is finished and the commit tagged `v6-frozen` is unchanged. No file under `src/` changes.
