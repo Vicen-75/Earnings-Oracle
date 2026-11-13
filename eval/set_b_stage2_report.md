@@ -27,4 +27,10 @@ V6 only right 23, V5 only right 22, p = 1.0000: no clear difference.
 
 ## Secondary: component ablation (Holm, family alpha 0.05)
 
-Arms not complete, so the ablation is not tested yet: no_oneoff (169/200), no_structured (0/200).
+| Arm | Arm correct | Arm decrease calls (right) | Reference only right | Arm only right | p | Significant (Holm) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Self-consistency (run 1 alone vs averaged) | 135 | 80 (46) | 7 | 7 | 1.0000 | no |
+| Decision rule (majority vote vs averaged) | 136 | 79 (46) | 0 | 1 | 1.0000 | no |
+| Without the downward rules (vs V6 run 1) | 133 | 75 (43) | 10 | 8 | 0.8145 | no |
+| Without the one-off adjustment (vs V6 run 1) | 132 | 82 (46) | 14 | 11 | 0.6900 | no |
+| Without the structured MD&A pass (vs V6 run 1) | 131 | 70 (39) | 23 | 19 | 0.6440 | no |
