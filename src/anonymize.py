@@ -58,15 +58,23 @@ def _clean_name(name):
 def _name_pattern(name):
     """A regex for a company name as it appears in prose: spaces or hyphens between words, '&' or 'and', an optional
     leading 'the', an optional legal suffix ('Inc.', 'Corporation').
-    Several words: any case. One word: only 'Target' or 'TARGET', never 'target', because one-word names are often
-    ordinary words (Target, Progressive, Visa) and the MD&A uses them in their ordinary sense."""
+    Several words: any case. One word: any capitalization except all lowercase ('MediaAlpha', 'EchoStar', 'TARGET'
+    are removed, 'target' is kept), because one-word names are often ordinary words (Target, Progressive, Visa) and the
+    MD&A uses them in their ordinary sense. The lowercase test is in _is_name (Nov 12: until then only 'Mediaalpha' and
+    'MEDIAALPHA' matched, so names with inner capitals leaked: MediaAlpha, EchoStar, InterDigital, TheRealReal)."""
     words = name.split()
     suffix = r"(?:,?\s+(?:Inc\.?|Corp\.?|Corporation|Co\.|Company|Ltd\.?|plc|LLC|Holdings))?"
     if len(words) == 1:
-        core = "(?:" + "|".join(re.escape(v) for v in {name.title(), name.upper()}) + ")"
-        return re.compile(rf"\b(?:[Tt]he\s+)?{core}{suffix}(?!\w)")
-    core = r"[\s\-]+".join(re.escape(w) if w != "&" else r"(?:&|and)" for w in words)
+        return re.compile(rf"\b(?:the\s+)?(?P<core>{re.escape(name)}){suffix}(?!\w)", re.IGNORECASE)
+    # words joined by spaces, hyphens or dots ('J.Jill' is cleaned to 'J Jill')
+    core = r"[\s\-.]+".join(re.escape(w) if w != "&" else r"(?:&|and)" for w in words)
     return re.compile(rf"\b(?:the\s+)?{core}{suffix}(?!\w)", re.IGNORECASE)
+
+
+def _is_name(match):
+    """False for a one-word name written all in lowercase ('target'): an ordinary word, not the company."""
+    core = match.groupdict().get("core")
+    return core is None or core != core.lower()
 
 
 def find_brand_names(text, generate):
@@ -154,7 +162,7 @@ class Anonymizer:
 
     def scrub_text(self, text):
         for pattern in self._patterns:
-            text = pattern.sub(COMPANY, text)
+            text = pattern.sub(lambda m: COMPANY if _is_name(m) else m.group(0), text)
         for brand in self.brands:
             text = _brand_pattern(brand).sub(PRODUCT, text)
         for t in self.tickers:
@@ -170,7 +178,7 @@ class Anonymizer:
         text = seen if isinstance(seen, str) else json.dumps(seen)
         found = {}
         for name, pattern in zip(self.company_names, self._patterns):
-            n = len(pattern.findall(text))
+            n = sum(1 for m in pattern.finditer(text) if _is_name(m))
             if n:
                 found[name] = n
         for term in self.brands:
