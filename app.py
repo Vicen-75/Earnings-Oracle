@@ -17,6 +17,10 @@ from src import ui
 
 MAX_REQUESTS_PER_SESSION = 10      # limit per visitor, so the class cannot use up our free tier
 CACHE_HOURS = 6                    # a ticker analyzed recently is shown again without a new model run
+APP_PROMPT = "V6"                  # Nov 14 (team decision, Nov 13): V6 with one run. Set B: as accurate as V5 and as
+                                   # V6 with three runs (134, 135, 135 of 200), cheapest ($0.024 vs $0.031 for V5) and
+                                   # fastest (34 s vs 44 s median), and its MD&A pass is schema-checked structured
+                                   # output. Evaluation scripts keep their own defaults (src/agent.py DEFAULT_PROMPT).
 
 EXAMPLES = {
     "CAT": "Caterpillar (industrials)",
@@ -509,7 +513,7 @@ def run_queue(queue, store, anonymize=False, redraw=None):
                 with waiting_line.slot(on_wait):      # tests share the waiting line with visitors (Nov 6)
                     status.update(label=f"{row['ticker']}: the model is investigating (FY2025 hidden)...")
                     res = run_test(row, investigate, parse_headline, on_event=on_event, log_path=APP_LOG_PATH,
-                                   anonymize=anonymize)
+                                   anonymize=anonymize, prompt=APP_PROMPT)
                 store[row["ticker"]] = res
                 status.update(label=f"**{row['ticker']}**: model {res['direction'] or 'no answer'}, truth "
                                     f"{row['truth']} · {verdict_badge(res['correct'])}",
@@ -597,7 +601,8 @@ def analyze_tab():
                             _ = writer.add(event)
 
                     try:
-                        out = investigate(ticker, on_event=on_event, log_path=APP_LOG_PATH)  # git-ignored record
+                        out = investigate(ticker, prompt=APP_PROMPT, on_event=on_event,
+                                          log_path=APP_LOG_PATH)                          # git-ignored record
                     except Exception as error:
                         failure = error
                     else:
