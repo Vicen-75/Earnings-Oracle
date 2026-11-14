@@ -8,6 +8,9 @@
 # Nov 12 (German): brought in line with the code as of PR #67: session cap and waiting line (run_limiter), the API
 # key pool between the agents and Gemini (key_pool), the anonymizer on tool results (anonymize, off in the app),
 # and the one retry on an empty reply.
+# Nov 14 (German): the app now runs V6 with one run (APP_PROMPT in app.py): temperature 1.0, the structured MD&A pass
+# (read_mdna_items, src/mdna_items.py) as a new tool, the draft kept when the final answer comes back empty, and the
+# anonymizer as a toggle in the Tests tab.
 # Keep NODES and EDGES in sync with the code: they name real files and functions.
 import html
 import json
@@ -18,9 +21,9 @@ CATEGORIES = {
     "app":     ("app.py: the Streamlit page", "#FFF4D6", "#D9A520"),
     "agent":   ("src/agent.py: the main agent", "#E3EEFF", "#3B6FD8"),
     "prompts": ("src/prompts.py, src/llm.py: prompts and model client", "#EFE6FF", "#7B57C9"),
-    "tool":    ("Tools the model can call (file named in each box)", "#E2F5E9", "#2E9A5C"),
+    "tool":    ("Tools the model can call (file named in each box; read_mdna_items is new in V6)", "#E2F5E9", "#2E9A5C"),
     "locate":  ("src/locate_mdna.py: the MD&A locator agent", "#DDF3F2", "#1F8A84"),
-    "anon":    ("src/anonymize.py: the anonymizer (anonymized test runs only)", "#FDE8EC", "#C2416B"),
+    "anon":    ("src/anonymize.py: the anonymizer (Tests tab toggle and anonymized test runs)", "#FDE8EC", "#C2416B"),
     "ext":     ("External services", "#F2F2F2", "#8A8A8A"),
 }
 
@@ -38,32 +41,33 @@ NODES = [
     ("load",    "app",    "app.py",               "EDGAR check",          "load_company()",                     "Ticker known? 10-K filings?", "", (330, 0)),
     ("cache",   "app",    "app.py",               "6-hour cache",         "cached_analysis()",                  "Analyzed recently?", "", (660, 0)),
     ("limit",   "app",    "app.py · src/run_limiter.py", "Session cap and waiting line", "MAX_REQUESTS_PER_SESSION · waiting_line()", "10 new analyses per visitor; a few runs at once, the rest queue", "", (990, 0)),
-    ("prompts", "prompts", "src/prompts.py",      "System prompt",        "TOOL_SYSTEM_V5",                     "How the agent should investigate", "", (160, 300)),
-    ("llm",     "prompts", "src/llm.py",          "Model client",         "client · MODEL",                     "gemini-3.1-flash-lite, thinking LOW", "", (160, 460)),
-    ("inv",     "agent",  "src/agent.py",         "Start the run",        "investigate(ticker, prompt='V5')",   "Builds the conversation", "main", (560, 200)),
+    ("prompts", "prompts", "src/prompts.py",      "System prompt",        "TOOL_SYSTEM_V6 · build_v6()",        "How the agent should investigate (the app runs V6)", "", (160, 300)),
+    ("llm",     "prompts", "src/llm.py",          "Model client",         "client · MODEL",                     "gemini-3.1-flash-lite, thinking LOW, temperature 1.0 for V6", "", (160, 460)),
+    ("inv",     "agent",  "src/agent.py",         "Start the run",        "investigate(ticker, prompt='V6')",   "One run per analysis (APP_PROMPT)", "main", (560, 200)),
     ("think",   "agent",  "src/agent.py",         "Think and decide",     "_generate()",                        "Gemini writes a thought, then calls tools or answers; an empty reply is asked once more", "main", (860, 200)),
     ("run",     "agent",  "src/agent.py",         "Run the chosen tool",  "IMPL[tool] (**args)",                 "One or more tools per turn", "main", (560, 420)),
     ("obs",     "agent",  "src/agent.py",         "Observation",          "observe()",                          "Tool result goes back to the model", "main", (860, 420)),
     ("draft",   "agent",  "src/agent.py",         "Draft answer",         "_draft_summary()",                   "Model answers without a tool", "main", (1200, 200)),
     ("check",   "agent",  "src/agent.py",         "Self-check",           "SELF_CHECK",                         "Could a ratio test a claim in the MD&A?", "main", (1200, 420)),
-    ("final",   "agent",  "src/agent.py",         "Final answer",         "",                                   "Direction, probability, signals, passages", "main", (1200, 640)),
+    ("final",   "agent",  "src/agent.py",         "Final answer",         "",                                   "Direction, probability, signals, passages; if empty, the draft is kept", "main", (1200, 640)),
     ("keys",    "prompts", "src/key_pool.py",     "API key pool",         "pool.generate()",                    "One key per analysis; moves to another key on rate limits", "", (1640, 200)),
     ("gemini",  "ext",    "",                     "Gemini API",           "",                                   "Every model call", "", (1640, 420)),
-    ("anon",    "anon",   "src/anonymize.py",     "Anonymizer (optional)", "Anonymizer.unalias() · scrub()",    "Off in the app. Name, ticker, CIK, brands become 'the Company'", "", (160, 640)),
+    ("anon",    "anon",   "src/anonymize.py",     "Anonymizer (optional)", "Anonymizer.unalias() · scrub()",    "Toggle in the Tests tab, off in Analyze. Name, ticker, CIK, brands become 'the Company'", "", (160, 640)),
     ("trace",   "app",    "app.py",               "Live trace",           "TraceWriter",                        "One step per model call, as it happens", "", (1640, 640)),
-    ("result",  "app",    "app.py",               "Results",              "show_result()",                      "Headline, answer, playbook, ratio table", "", (1640, 860)),
+    ("result",  "app",    "app.py",               "Results",              "show_result() · src/ui.py",          "The call, signals both ways, quotes, ratio table", "", (1640, 860)),
     ("log",     "agent",  "src/agent.py",         "Run log",              "_write_log()",                       "eval/app_runs.jsonl, eval/tool_log.jsonl", "", (1640, 1060)),
     ("card",    "tool",   "src/edgar.py",         "Company card",         "company_card()",                     "SIC, filings, CIK, target metric", "", (0, 980)),
     ("pb",      "tool",   "src/ratio_directory.py", "Industry playbook",  "get_industry_playbook()",            "14 industry groups, 24 ratios", "", (290, 980)),
     ("cr",      "tool",   "src/ratios.py",        "Compute ratios",       "compute_ratios()",                   "Ratios the model chose; flags ±50%", "", (580, 980)),
     ("gm",      "tool",   "src/mdna.py",          "Read the MD&A",        "get_mdna() · extract_mdna_from_text()", "Headings vs contents vs cross-references", "", (870, 980)),
+    ("mi",      "tool",   "src/mdna_items.py",    "Structured MD&A pass", "read_mdna_items()",                  "Guidance, one-offs, headwinds, tailwinds; schema-checked, quotes checked word for word", "", (290, 1160)),
     ("val",     "tool",   "src/mdna.py",          "Validate the section", "validate_section()",                 "Length, other Items, MD&A language", "", (870, 1160)),
     ("lm",      "locate", "src/locate_mdna.py",   "Find the MD&A via the contents", "locate_mdna()",            "Only if get_mdna found nothing", "", (1200, 1100)),
     ("outline", "locate", "src/locate_mdna.py",   "Build the outline",    "build_document() · outline_text()",  "Every table-of-contents link", "loc", (1200, 1300)),
     ("ldecide", "locate", "src/locate_mdna.py",   "Think and decide",     "locate_in_filing()",                 "Gemini picks: peek or extract", "loc", (1200, 1480)),
     ("peek",    "locate", "src/locate_mdna.py",   "Peek",                 "peek(doc, anchor)",                  "First lines at an anchor", "loc", (1600, 1300)),
     ("extract", "locate", "src/locate_mdna.py",   "Extract and check",    "extract(doc, start, end)",           "validate_section() + must end at the next 10-K part", "loc", (1600, 1660)),
-    ("sec",     "ext",    "",                     "SEC EDGAR",            "edgar._get()",                       "8 requests/s, cached", "", (330, 1340)),
+    ("sec",     "ext",    "",                     "SEC EDGAR",            "edgar._get()",                       "8 requests/s, cached", "", (330, 1440)),
 ]
 
 # source, target, label, style: "flow" (solid: what runs next), "data" (dashed: inputs and external services),
@@ -78,7 +82,7 @@ EDGES = [
     ("inv", "think", "", "flow"),
     ("think", "run", "tool call(s)", "flow"),
     ("run", "card", "", "flow"), ("run", "pb", "", "flow"), ("run", "cr", "", "flow"), ("run", "gm", "", "flow"),
-    ("run", "lm", "if get_mdna failed", "flow"),
+    ("run", "lm", "if get_mdna failed", "flow"), ("run", "mi", "V6", "flow"), ("mi", "obs", "", "flow"),
     ("card", "obs", "", "flow"), ("pb", "obs", "", "flow"), ("cr", "obs", "", "flow"),
     ("run", "anon", "anonymized runs", "data"), ("anon", "obs", "scrubbed result", "data"),
     ("gm", "val", "", "flow"), ("val", "obs", "section, or not found", "flow"),
@@ -96,7 +100,8 @@ EDGES = [
     ("obs", "trace", "each step, live", "data"), ("final", "log", "", "data"),
     ("load", "sec", "", "data"), ("card", "sec", "", "data"), ("cr", "sec", "", "data"), ("gm", "sec", "", "data"),
     ("outline", "sec", "", "data"),
-    ("extract", "val", "same rule", "shared"),
+    ("extract", "val", "same rule", "shared"), ("mi", "gm", "reads the same MD&A", "shared"),
+    ("mi", "keys", "one extraction call", "data"),
 ]
 
 LINE_STYLES = {
@@ -109,7 +114,7 @@ LINE_STYLES = {
 LEGEND = [
     ("app.py", "Streamlit page: input, EDGAR check before any model call, 6-hour cache, live trace, results."),
     ("src/agent.py", "Main agent: tool definitions, the ReAct loop, the self-check turn, observations, logs."),
-    ("src/prompts.py", "Versioned system prompts (V3, V4, V5; V5 the default) and the locator's prompt."),
+    ("src/prompts.py", "Versioned system prompts (V3 to V7) and the locator's prompt. The app runs V6; eval scripts default to V5."),
     ("src/llm.py", "Model name and the simple one-call helper used by eval scripts."),
     ("src/key_pool.py", "Several API keys from different projects: one key per analysis, failover on rate limits."),
     ("src/run_limiter.py", "Waiting line: a few analyses run at once across all visitors; the rest see their place."),
@@ -117,8 +122,11 @@ LEGEND = [
     ("src/ratio_directory.py", "The ratio directory: 24 ratio definitions, 14 industry playbooks, SIC mapping."),
     ("src/ratios.py", "Computes the ratios the model picks from XBRL data; flags growth beyond +/-50%."),
     ("src/mdna.py", "MD&A parser: headings vs contents vs cross-references, and validate_section()."),
+    ("src/mdna_items.py", "V6 tool: one structured pass over the MD&A, items with verbatim quotes checked in code."),
     ("src/locate_mdna.py", "Locator agent: finds the MD&A through the filing's table of contents when the parser fails."),
     ("src/anonymize.py", "Anonymizer for test runs: removes name, ticker, CIK and brands from every tool result."),
+    ("src/consensus.py", "Three V6 runs averaged into one call (tested on set B; the app uses one run)."),
+    ("src/ui.py", "Look of the Analyze tab: the call, the evidence and the ratio table."),
     ("src/baseline.py", "The three baselines the model must beat: always increase, momentum (last year's direction), reverse momentum."),
     ("src/backtest.py", "Tests tab: loads eval/test_set.csv, runs one test with FY2025 hidden, scores it."),
     ("src/flowchart.py", "This tab: the flow model, drawn as a Mermaid diagram or a React Flow graph."),
@@ -235,7 +243,7 @@ HANDLES = {
     "inv": ("right", "top"), "think": ("bottom", "left"), "run": ("bottom", "top"), "obs": ("top", "bottom"),
     "draft": ("bottom", "left"), "check": ("bottom", "top"), "final": ("right", "top"),
     "gemini": ("bottom", "top"), "trace": ("bottom", "left"), "result": ("bottom", "left"),
-    "peek": ("bottom", "right"), "extract": ("left", "right"),
+    "peek": ("bottom", "right"), "extract": ("left", "right"), "mi": ("right", "top"),
 }
 
 
