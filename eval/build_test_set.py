@@ -30,6 +30,16 @@
 # Writes eval/sample_checks_b.csv and eval/test_set_200b.csv; set A's files are not touched.
 #   python -m eval.build_test_set check --set b
 #   python -m eval.build_test_set status --set b
+#
+# Nov 11, set C (docs/test_plan.md): 200 fresh companies used once, to choose between V6 and V7 before the freeze.
+# Same gates and order; starts after set B's last company (universe order 433) and skips the development set, set A
+# and set B. Writes eval/sample_checks_c.csv and eval/test_set_200c.csv.
+#   python -m eval.build_test_set check --set c
+#
+# Nov 13, set D (docs/test_plan.md): 400 fresh companies for one more test of V6, with one run per company. Same gates
+# and order; starts after set C's last company (universe order 651) and skips the development set and sets A, B and C.
+# Writes eval/sample_checks_d.csv and eval/test_set_400d.csv.
+#   python -m eval.build_test_set check --set d
 import csv
 import random
 import sys
@@ -51,7 +61,13 @@ TEST_SET_PATH = Path("eval/test_set_200.csv")
 DEV_SET_PATH = Path("eval/test_set.csv")
 START_AFTER_ORDER = 0                       # set B: 217, the universe order of set A's 200th company
 EXCLUDED = set()                            # set B: the development set's tickers and set A's
-SETS = {"b": {"checks": Path("eval/sample_checks_b.csv"), "test": Path("eval/test_set_200b.csv"), "start_after": 217}}
+SETS = {"b": {"checks": Path("eval/sample_checks_b.csv"), "test": Path("eval/test_set_200b.csv"), "start_after": 217,
+              "exclude": [Path("eval/test_set_200.csv")]},
+        "c": {"checks": Path("eval/sample_checks_c.csv"), "test": Path("eval/test_set_200c.csv"), "start_after": 433,
+              "exclude": [Path("eval/test_set_200.csv"), Path("eval/test_set_200b.csv")]},
+        "d": {"checks": Path("eval/sample_checks_d.csv"), "test": Path("eval/test_set_400d.csv"), "start_after": 651,
+              "size": 400, "exclude": [Path("eval/test_set_200.csv"), Path("eval/test_set_200b.csv"),
+                                       Path("eval/test_set_200c.csv")]}}
 
 REVENUE_TAGS = ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
                 "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueNet",
@@ -190,7 +206,7 @@ def check(limit=None):
         if ticker in EXCLUDED:                           # set B: never reuse a development-set or set A company
             checks[ticker] = {"order": company["order"], "ticker": ticker, "cik": company["cik"],
                               "name": company["name"], "status": "SKIPPED_OTHER_SET",
-                              "detail": "in the development set or set A"}
+                              "detail": "in the development set or an earlier test set"}
             continue
         # Stop once TARGET_SIZE companies EARLIER in the order are accepted. Counting earlier ones only (Nov 6 fix)
         # means a company that errored is retried even when 200 were already accepted after it: if it passes, it
@@ -248,12 +264,17 @@ def status():
 
 def use_set(name):
     """Point the check and status steps at set B's files (set A stays the default, unchanged)."""
-    global CHECKS_PATH, TEST_SET_PATH, START_AFTER_ORDER, EXCLUDED
+    global CHECKS_PATH, TEST_SET_PATH, START_AFTER_ORDER, EXCLUDED, TARGET_SIZE
     chosen = SETS[name]
+    TARGET_SIZE = chosen.get("size", TARGET_SIZE)          # set D: 400 companies
     CHECKS_PATH, TEST_SET_PATH, START_AFTER_ORDER = chosen["checks"], chosen["test"], chosen["start_after"]
-    EXCLUDED = {r["ticker"] for r in _read(DEV_SET_PATH)} | {r["ticker"] for r in _read(Path("eval/test_set_200.csv"))}
+    EXCLUDED = {r["ticker"] for r in _read(DEV_SET_PATH)}
+    for path in chosen["exclude"]:
+        if not path.exists():
+            sys.exit(f"{path} is missing: set {name.upper()} must exclude its companies.")
+        EXCLUDED |= {r["ticker"] for r in _read(path)}
     print(f"Set {name.upper()}: {TEST_SET_PATH}, starting after universe order {START_AFTER_ORDER}, "
-          f"{len(EXCLUDED)} tickers excluded (development set and set A).")
+          f"{len(EXCLUDED)} tickers excluded (development set and earlier test sets).")
 
 
 if __name__ == "__main__":
