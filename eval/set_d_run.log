@@ -1,0 +1,15 @@
+[2026-11-13 17:19:35] === Set D, unattended: the 400 companies, then V6 with one run on each ===
+[2026-11-13 17:19:35] Step 1, the set: 0/400 accepted, 0 tried, 0 error(s) to retry, starting.
+[2026-11-13 23:40:28] Step 1, the set: stopped (exit 0); now 371/400 accepted, 397 tried, 6 error(s) to retry.
+[2026-11-13 23:45:29] Step 1, the set: 371/400 accepted, 397 tried, 6 error(s) to retry, starting.
+[2026-11-13 23:54:53] Step 1, the set: stopped (exit 0); now 400/400 accepted, 429 tried, 0 error(s) to retry.
+[2026-11-13 23:54:53] Step 1, the set: complete (400/400 accepted, 429 tried, 0 error(s) to retry).
+[2026-11-13 23:54:53] The list is final: eval\test_set_400d.csv, sha256 7d8b33acd5532d7d99351af92bb3d18669176a15ec7657595f554247e4feebcd.
+[2026-11-13 23:54:53] Step 2, the runs: 0/400 done, starting.
+[2026-11-14 02:47:51] Step 2, the runs: stopped (exit 0); now 399/400 done.
+[2026-11-14 02:52:51] Step 2, the runs: 399/400 done, starting.
+[2026-11-14 02:55:06] Step 2, the runs: stopped (exit 0); now 400/400 done.
+[2026-11-14 02:55:06] Step 2, the runs: complete (400/400 done).
+[2026-11-14 02:55:06] === Set D is done. Nothing has been scored. The one look at accuracy: python -m eval.analyze_set_d ===
+[2026-11-14 02:55:06] Step 1, the set:  400/400 companies accepted, 429 tried, 0 error(s) to retry, list final.
+[2026-11-14 02:55:06] Step 2, the runs: 400/400 companies done with V6.
