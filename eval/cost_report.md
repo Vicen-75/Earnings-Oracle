@@ -1,8 +1,34 @@
 # Cost and speed per analysis
 
 Issues #55 and #59. Owner: Vicente. Drafted with help from Claude; numbers produced by code in this repo.
-Data: `eval/backtest_200_results.jsonl` (200-company backtest, prompt V5, Nov 5 to 6) and
-`eval/cost_per_analysis.csv` (5 fresh runs, Nov 6). Script: `eval/cost_analysis.py`.
+Data: `eval/backtest_200_results.jsonl` (200-company backtest, prompt V5, Nov 5 to 6),
+`eval/cost_per_analysis.csv` (5 fresh runs, Nov 6), and for the version the app runs since Nov 14,
+`eval/set_b_cost_variation_report.md` (set B, Nov 13) and `eval/setd_results.jsonl` (set D, Nov 14).
+Script: `eval/cost_analysis.py`.
+
+## Nov 14: the app runs V6 with one run
+
+The team chose V6 with one run for the app on Nov 13 (it is as accurate as the other two options on set B, 135 of 200
+against 134 for V5 and 135 for V6 with three runs). Every call is counted in these runs (main agent, MD&A item pass,
+locator, thinking tokens), so no estimate is needed.
+
+| Version | Set | Companies | Cost per analysis, median | Mean | 90th percentile | Model calls | Input tokens, median |
+|---|---|---|---|---|---|---|---|
+| V5 | B | 200 | $0.028 | $0.031 | $0.046 | 5 (median) | 92,000 |
+| **V6, one run (the app)** | B | 200 | $0.021 | **$0.024** | $0.036 | 7 (median) | 62,000 |
+| **V6, one run (the app)** | D | 400 | $0.021 | **$0.024** | $0.033 | 7.4 (mean) | 61,000 |
+| V6, three runs | B | 200 | $0.065 | $0.072 | $0.102 | 21 (median) | 190,000 |
+
+1. **V6 with one run is the cheapest.** It reads a structured list of MD&A items instead of the whole MD&A, so input
+   falls by about a third. It is cheaper than V5 for 77% of the set B companies. Input is now about 75% of the cost
+   (92% for V5). Set D, 400 new companies, gives the same mean, $0.024.
+2. **Three runs cost three times as much for no gain** (135 of 200 either way, `eval/set_b_stage2_report.md`).
+3. **Speed.** Median 34 s on set B against 44 s for V5 (`eval/set_b_cost_variation_report.md`); batch runs on shared
+   free keys include waits for rate limits, so these are upper bounds for a single analysis in the app.
+4. **One outlier.** The most expensive set D company cost $0.26 (long tool loop); the 90th percentile is $0.033.
+
+The financial model (#59) now uses **$0.024** as the base cost per analysis and the V5 worst case ($0.073, JPM) as the
+high case. The sections below are the Nov 6 to 9 measurement of V5, kept as they were.
 
 ## Price used
 
@@ -41,8 +67,9 @@ The class app runs on the free tier and pays nothing; these are the prices a rea
 
 ## Used in
 
-The financial model (#59, `Earnings_Oracle_financial_model.xlsx` in the team Drive) uses $0.030 as the base cost
-per analysis and the most expensive measured run ($0.073, JPM) in the worst case.
+Until Nov 14 the financial model (#59, `Earnings_Oracle_financial_model.xlsx` in the team Drive) used $0.030 (V5) as
+the base cost per analysis and the most expensive measured run ($0.073, JPM) in the worst case. Since Nov 14 the base
+is V6 with one run, $0.024 (section above).
 
 ## How to run it again
 
