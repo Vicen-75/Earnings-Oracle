@@ -529,11 +529,56 @@ def run_queue(queue, store, anonymize=False, redraw=None):
 def analyze_tab():
     # A form, so pressing Enter in the box submits it like the Analyze button (a plain text box only saves the text).
     # Nov 12 (German): the ticker box comes first, the examples under it as a shortcut.
-    with st.form("ticker_form", border=False):
-        ticker_col, button_col = st.columns([5, 1], vertical_alignment="bottom")
-        ticker_col.text_input("Ticker", key="ticker", placeholder="e.g. CAT, ADBE, HD")
-        if button_col.form_submit_button("Analyze", type="primary", width="stretch"):
+    
+    # --- Nicolas: Intelligent company search ---
+    # AI-assisted with ChatGPT (GPT-6).
+
+    from src.company_search import suggest_companies
+
+    ticker_col, button_col = st.columns(
+        [5, 1], vertical_alignment="bottom"
+    )
+
+    with ticker_col:
+        st.text_input(
+            "Ticker or company",
+            key="ticker",
+            placeholder="e.g. MSFT, NVDA, Microsoft"
+        )
+
+    query = st.session_state.get("ticker", "").strip()
+    matches = suggest_companies(query) if len(query) >= 2 else []
+
+    tickers = [company["ticker"] for company in matches]
+
+    labels = {
+        company["ticker"]: f'{company["name"]} ({company["ticker"]})'
+        for company in matches
+    }
+
+    selected = None
+
+    if matches:
+        selected = st.radio(
+            "Did you mean one of these companies?",
+            options=tickers,
+            index=None,
+            format_func=lambda ticker: labels[ticker],
+        )
+
+    elif len(query) >= 2:
+        st.caption("No matching companies found.")
+
+    with button_col:
+        if st.button(
+            "Analyze",
+            type="primary",
+            width="stretch",
+            disabled=selected is None
+        ):
+            st.session_state.selected_ticker = selected
             st.session_state.run_now = True
+
     cols = st.columns([1.1] + [1] * (len(EXAMPLES) - 1) + [0.9], vertical_alignment="center")
     cols[0].caption("Or try an example:")
     for col, t in zip(cols[1:], EXAMPLES):
@@ -542,7 +587,13 @@ def analyze_tab():
 
     # --- Run --------------------------------------------------------------------------------------------------------
     if st.session_state.pop("run_now", False):
-        ticker = (st.session_state.get("ticker") or "").upper().strip()
+        
+        ticker = (
+            st.session_state.pop("selected_ticker", None)
+            or st.session_state.get("ticker")
+            or ""
+        ).upper().strip()
+
         if not ticker:
             st.warning("Please enter a ticker.")
             st.stop()
