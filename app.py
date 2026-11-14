@@ -124,21 +124,6 @@ def _agent_label(entry, agent):
     return "Main agent" if agent == "main" else f"MD&A locator, 10-K for FY ending {entry.get('filing')}"
 
 
-def _show_item(entry):
-    """Thought, action, observation for one tool call inside a step."""
-    if entry["tool"] == "stop":
-        st.markdown(f"- *Observation:* {entry['observation']}")
-        return
-    if entry["tool"] in ("draft_answer", "empty_reply"):   # the model answered (or came back empty): no tool was called
-        st.markdown(f"- {entry['observation']}")
-        return
-    ok = entry.get("ok", not str(entry.get("observation", "")).startswith(("Error", "Rejected")))
-    observation = entry.get("observation") or ("ok" if ok else "the tool reported an error")
-    st.markdown(f"- *Thought:* {entry.get('reason') or '(none given)'}\n"
-                f"- *Action:* `{describe_action(entry)}`\n"
-                f"- *Observation:* {observation if ok else ':red[' + observation + ']'}")
-
-
 class TraceWriter:
     """Writes the trace step by step (live, as events arrive, or all at once for a cached result)."""
     def __init__(self):
@@ -146,30 +131,34 @@ class TraceWriter:
 
     def add(self, entry, agent="main"):
         key = _step_key(entry, agent)
+        kind = "locator" if agent != "main" else ("draft" if entry["tool"] in ("draft_answer", "empty_reply") else "main")
         if key != self.key:                                  # a new model call starts a new step
             self.n += 1
             self.key = key
             suffix = {"draft_answer": " · Draft answer", "empty_reply": " · Empty reply"}.get(entry["tool"], "")
-            st.markdown(f"**Step {self.n} · {_agent_label(entry, agent)}{suffix}**")
-        _show_item(entry)
+            label = _agent_label(entry, agent) + suffix
+            ui.step_header(self.n, label.replace("MD&A locator, ", "MD&A locator · "), kind)   # Nov 14: timeline (src/ui.py)
+        ui.step_item(entry, describe_action(entry) if entry["tool"] not in ("draft_answer", "empty_reply", "stop") else "",
+                     kind)
         for sub in entry.get("substeps", []):                # the locator's own model calls, in order
             self.add(sub, agent="locator")
 
     def conclude(self, out, direction, probability):
         self.n += 1
-        st.markdown(f"**Step {self.n} · Main agent · Conclusion**")
         answer = out["answer"]
+        kind = "done" + (" down" if direction == "decrease" else "")
+        ui.step_header(self.n, "Main agent · Conclusion", kind)
         if "no data found" in answer.lower()[:300]:
-            st.markdown("- No data found: nothing usable to predict from.")
+            text = "⚖️ No data found: nothing usable to predict from."
         elif direction:
             prob = f" with probability {probability:.2f}" if probability is not None else ""
-            st.markdown(f"- Weighed the evidence: {target_name(out).lower()} will **{direction}**{prob}. "
-                        "The reasoning is in the answer below.")
+            text = (f"⚖️ Weighed the evidence: {target_name(out).lower()} will **{direction}**{prob}. "
+                    "The reasoning is in the answer above.")
         else:
-            st.markdown("- See the answer below (the direction could not be read from the text).")
+            text = "⚖️ See the answer above (the direction could not be read from the text)."
         u = out["usage"]
-        st.caption(f"Main agent: {u['model_calls']} model calls, {u['prompt_tokens']:,} tokens in, "
-                   f"{u['output_tokens']:,} tokens out. Prompt {out.get('prompt', '?')}.")
+        ui.step_conclusion(text, f"Main agent: {u['model_calls']} model calls, {u['prompt_tokens']:,} tokens in, "
+                                 f"{u['output_tokens']:,} tokens out. Prompt {out.get('prompt', '?')}.")
 
 
 def trace_label(n):
@@ -252,45 +241,10 @@ def show_result(ticker, company, out, cached_at=None, call_slot=None):
         st.caption(f"Self-check: {sections['selfcheck']}")
     st.write("")
 
-    mdna = out["results"].get("locate_mdna") or out["results"].get("get_mdna")
-    with st.expander("Filings and MD&A read", expanded=False):
-        for f in company["filings"]:
-            st.markdown(f"- 10-K for fiscal year ending {f['fiscal_year_end']} (filed {f['filed']}): "
-                        f"[open on EDGAR]({f['url']})")
-        if mdna is None:
-            st.caption("The model decided not to read the MD&A.")
-        elif "error" in mdna:
-            st.caption(f"MD&A: {mdna['error']}. The answer rests on the ratios only.")
-        else:
-            st.caption("MD&A sections read: " + ", ".join(
-                f"FY ending {f['fiscal_year_end']} ({f['chars']:,} characters"
-                f"{', ' + f['how_found'] if f.get('how_found') else ''}{', truncated' if f.get('truncated') else ''})"
-                for f in mdna["filings"]))
-
-    standard = company["ratios"]
-    if isinstance(standard, dict) and "error" not in standard:
-        with st.expander("Standard ratio table (same for every company, for reference)", expanded=False):
-            labels = {"revenue_billion_usd": ("Revenue (USD billions)", "number"),
-                      "operating_income_billion_usd": ("Operating income (USD billions)", "number"),
-                      "operating_margin": ("Operating margin", "margin"),
-                      "revenue_growth": ("Revenue growth", "growth"),
-                      "operating_income_growth": ("Operating income growth", "growth"),
-                      "asset_turnover": ("Asset turnover", "multiple"),
-                      "liabilities_to_equity": ("Liabilities / equity", "multiple")}
-            current, prior = standard["fy_current"], standard["fy_prior"]
-            table = pd.DataFrame(
-                {f"FY ending {prior['fiscal_year_end']}": [fmt(prior[k], kind) if kind != "number" else
-                                                           (f"{prior[k]:,.2f}" if isinstance(prior[k], (int, float)) else "not reported")
-                                                           for k, (_, kind) in labels.items()],
-                 f"FY ending {current['fiscal_year_end']}": [fmt(current[k], kind) if kind != "number" else
-                                                             (f"{current[k]:,.2f}" if isinstance(current[k], (int, float)) else "not reported")
-                                                             for k, (_, kind) in labels.items()]},
-                index=[label for label, _ in labels.values()],
-            )
-            st.table(table)
+    ui.sources(company["filings"], out["results"])          # Nov 14: cards instead of two folded boxes (src/ui.py)
+    ui.at_a_glance(company["ratios"])
 
 
-# --- Input ------------------------------------------------------------------------------------------------------
 def pick_example(t):
     st.session_state.ticker = t
     st.session_state.run_now = True
@@ -446,10 +400,9 @@ def draw_results(board, table_box, rows, store, base, running=None):
     mom_all = sum(is_correct(base[r["ticker"]]["momentum"]["direction"], r["truth"]) for r in rows)
     inc_all = sum(is_correct("increase", r["truth"]) for r in rows)
     with board.container():
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Model", f"{model_ok} of {n}" if n else "not run yet", help="Correct directions among the tests run")
-        c2.metric("Momentum baseline", f"{mom_ok} of {n}" if n else "-", help="On the same companies as the model")
-        c3.metric("Always increase", f"{inc_ok} of {n}" if n else "-", help="On the same companies as the model")
+        ui.scoreboard([("Model", model_ok if n else None, n, "Correct directions among the tests run", True),
+                       ("Momentum baseline", mom_ok if n else None, n, "On the same companies as the model", False),
+                       ("Always increase", inc_ok if n else None, n, "On the same companies as the model", False)])
         st.caption(f"On all {len(rows)} companies: momentum {mom_all} of {len(rows)}, always increase {inc_all} of "
                    f"{len(rows)}. With 20 companies, one company is 5 points: a one-company difference is not "
                    "evidence.")
@@ -529,56 +482,11 @@ def run_queue(queue, store, anonymize=False, redraw=None):
 def analyze_tab():
     # A form, so pressing Enter in the box submits it like the Analyze button (a plain text box only saves the text).
     # Nov 12 (German): the ticker box comes first, the examples under it as a shortcut.
-    
-    # --- Nicolas: Intelligent company search ---
-    # AI-assisted with ChatGPT (GPT-6).
-
-    from src.company_search import suggest_companies
-
-    ticker_col, button_col = st.columns(
-        [5, 1], vertical_alignment="bottom"
-    )
-
-    with ticker_col:
-        st.text_input(
-            "Ticker or company",
-            key="ticker",
-            placeholder="e.g. MSFT, NVDA, Microsoft"
-        )
-
-    query = st.session_state.get("ticker", "").strip()
-    matches = suggest_companies(query) if len(query) >= 2 else []
-
-    tickers = [company["ticker"] for company in matches]
-
-    labels = {
-        company["ticker"]: f'{company["name"]} ({company["ticker"]})'
-        for company in matches
-    }
-
-    selected = None
-
-    if matches:
-        selected = st.radio(
-            "Did you mean one of these companies?",
-            options=tickers,
-            index=None,
-            format_func=lambda ticker: labels[ticker],
-        )
-
-    elif len(query) >= 2:
-        st.caption("No matching companies found.")
-
-    with button_col:
-        if st.button(
-            "Analyze",
-            type="primary",
-            width="stretch",
-            disabled=selected is None
-        ):
-            st.session_state.selected_ticker = selected
+    with st.form("ticker_form", border=False):
+        ticker_col, button_col = st.columns([5, 1], vertical_alignment="bottom")
+        ticker_col.text_input("Ticker or company name", key="ticker", placeholder="e.g. CAT, ADBE, HD or Microsoft")
+        if button_col.form_submit_button("Analyze", type="primary", width="stretch"):
             st.session_state.run_now = True
-
     cols = st.columns([1.1] + [1] * (len(EXAMPLES) - 1) + [0.9], vertical_alignment="center")
     cols[0].caption("Or try an example:")
     for col, t in zip(cols[1:], EXAMPLES):
@@ -587,13 +495,7 @@ def analyze_tab():
 
     # --- Run --------------------------------------------------------------------------------------------------------
     if st.session_state.pop("run_now", False):
-        
-        ticker = (
-            st.session_state.pop("selected_ticker", None)
-            or st.session_state.get("ticker")
-            or ""
-        ).upper().strip()
-
+        ticker = (st.session_state.get("ticker") or "").upper().strip()
         if not ticker:
             st.warning("Please enter a ticker.")
             st.stop()
@@ -609,6 +511,19 @@ def analyze_tab():
                             ". With no annual report there is nothing for the model to read.")
             else:
                 st.error(company["error"])
+                if "was not found on EDGAR" in company["error"]:
+                    # --- Nicolas (#50): a mistyped ticker or a company name gets close matches to pick from.
+                    # Searched only when the ticker is unknown, so a valid ticker runs as before (Nov 14).
+                    from src.company_search import suggest_companies
+                    try:
+                        matches = suggest_companies(st.session_state.get("ticker") or "")
+                    except Exception:                      # never let the search break the page
+                        matches = []
+                    if matches:
+                        st.caption("Did you mean one of these companies?")
+                        for col, m in zip(st.columns(len(matches)), matches):
+                            col.button(f"{m['name']} ({m['ticker']})", key=f"suggest_{m['ticker']}",
+                                       on_click=pick_example, args=(m["ticker"],), width="stretch")
             st.stop()
 
         hit = cached_analysis(ticker)
