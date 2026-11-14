@@ -318,10 +318,15 @@ def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, 
 
     # Anonymized run: the model is told the ticker is "COMPANY"; the tools translate it back (issue #27)
     anon = Anonymizer(ticker, generate=brand_scan_call) if anonymize else None
-    contents = [types.Content(role="user", parts=[types.Part(text=f"Ticker: {TICKER_ALIAS if anon else ticker}")])]
+    first = f"Ticker: {ticker}" if not anon else (     # Nov 12 (#41): told only "Ticker: COMPANY", 6 of 200 anonymized
+        f"Ticker: {TICKER_ALIAS}. The company's identity is hidden on purpose for this test. {TICKER_ALIAS} is a "
+        f"valid placeholder: use it as the ticker in every tool call.")    # runs refused it as an invalid ticker
+    contents = [types.Content(role="user", parts=[types.Part(text=first)])]
 
     def finish(answer):
         usage["billed"] = pool.usage()            # every call of the run, thinking tokens included (issue #55)
+        if anon:                                  # Nov 12 (#41): "ok", "failed (...)" or "not run"; a failed scan means
+            usage["brand_scan"] = anon.brand_scan  # brands stayed visible, so the anonymized run can redo that company
         if write_log:
             _write_log(ticker, log, answer, usage, anonymize, prompt, log_path or LOG_PATH, skip_newest, ablation)
         return {"answer": answer, "steps": log, "results": results, "usage": usage, "prompt": prompt}

@@ -9,6 +9,8 @@
 #   python -m eval.anonymize_check              # leak check only (1 model call per company: the brand scan)
 #   python -m eval.anonymize_check --guess      # also the guess check (1 more call per company)
 #   python -m eval.anonymize_check CAT HD       # a few tickers
+#   python -m eval.anonymize_check --set 200 --guess   # Nov 12: the 200-company test set, for eval/named_vs_anon.py;
+#                                                       # writes eval/anonymize_check_200.csv
 # Writes eval/anonymize_check.csv.
 import csv
 import sys
@@ -26,6 +28,8 @@ from src.locate_mdna import locate_mdna
 
 TEST_SET = Path("eval/test_set.csv")
 OUT = Path("eval/anonymize_check.csv")
+TEST_SET_200 = Path("eval/test_set_200.csv")
+OUT_200 = Path("eval/anonymize_check_200.csv")
 SKIP_NEWEST = 1                     # backtest mode: the same filings the agent reads when predicting
 GUESS_CHARS = 12_000
 
@@ -55,15 +59,15 @@ def guess_company(industry, text):
         return None
 
 
-def check(ticker, do_guess=False):
+def check(ticker, do_guess=False, skip_newest=SKIP_NEWEST):
     anon = Anonymizer(ticker, generate=generate)
     row = {"ticker": ticker, "company_names": "; ".join(anon.company_names)}
-    card = edgar.company_card(ticker, skip_newest=SKIP_NEWEST)
+    card = edgar.company_card(ticker, skip_newest=skip_newest)
     if "error" in card:
         return {**row, "status": f"no card: {card['error']}"}
-    mdna = get_mdna(card["cik"], skip_newest=SKIP_NEWEST)
+    mdna = get_mdna(card["cik"], skip_newest=skip_newest)
     if "error" in mdna:                                   # same fallback the agent uses (MCD on Nov 6)
-        mdna = locate_mdna(card["cik"], skip_newest=SKIP_NEWEST)
+        mdna = locate_mdna(card["cik"], skip_newest=skip_newest)
     if "error" in mdna:
         return {**row, "status": "MD&A not found, even with the locator"}
     seen = [anon.scrub(card), anon.scrub(mdna)]
@@ -86,14 +90,15 @@ def check(ticker, do_guess=False):
 
 def main(args):
     do_guess = "--guess" in args
-    tickers = [a for a in args if not a.startswith("--")]
-    if not tickers:
-        with open(TEST_SET, newline="") as f:
-            tickers = [r["ticker"] for r in csv.DictReader(f)]
+    test_set, out = (TEST_SET_200, OUT_200) if "--set" in args and args[args.index("--set") + 1] == "200" \
+        else (TEST_SET, OUT)
+    with open(test_set, newline="") as f:              # skip_newest per company (set 200 has 1 or 2)
+        skips = {r["ticker"]: int(r.get("skip_newest") or SKIP_NEWEST) for r in csv.DictReader(f)}
+    tickers = [a for a in args if not a.startswith("--") and a != "200"] or list(skips)
     rows = []
     for t in tickers:
         try:
-            row = check(t, do_guess)
+            row = check(t, do_guess, skips.get(t, SKIP_NEWEST))
         except Exception as error:
             row = {"ticker": t, "status": f"error: {type(error).__name__}: {error}"}
         rows.append(row)
@@ -101,7 +106,7 @@ def main(args):
               + (f" | guess: {row.get('guess')} right={row.get('guessed_right')}" if do_guess else ""))
     fields = ["ticker", "status", "company_names", "chars_checked", "brand_scan", "brands_removed", "leaks",
               "leak_free", "guess", "guess_confident", "guessed_right"]
-    with open(OUT, "w", newline="") as f:
+    with open(out, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
@@ -110,7 +115,7 @@ def main(args):
     if do_guess:
         guessed = [r for r in checked if r.get("guessed_right")]
         print(f"The model still named {len(guessed)} of {len(checked)} companies from the anonymized text.")
-    print(f"Results in {OUT}")
+    print(f"Results in {out}")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@
 # Run from the repository root:
 #   python -m eval.analyze_backtest                # default prompt; writes eval/backtest_200_report.md
 #   python -m eval.analyze_backtest --prompt V4
+#   python -m eval.analyze_backtest --anonymize     # the anonymized run (Nov 12); writes eval/backtest_200_anon_report.md
 import csv
 import json
 import sys
@@ -22,6 +23,7 @@ from src.agent import DEFAULT_PROMPT
 TEST_SET_PATH = Path("eval/test_set_200.csv")
 RESULTS_PATH = Path("eval/backtest_200_results.jsonl")
 REPORT_PATH = Path("eval/backtest_200_report.md")
+ANON_RESULTS_PATH = Path("eval/backtest_200_anon_results.jsonl")       # Nov 12: python -m eval.run_backtest --anonymize
 BASELINES = {"always_increase": "Always increase", "momentum": "Momentum", "reverse_momentum": "Reverse momentum"}
 BANDS = [(0.0, 0.6, "below 0.60"), (0.6, 0.7, "0.60 to 0.69"), (0.7, 0.8, "0.70 to 0.79"), (0.8, 1.01, "0.80 and up")]
 
@@ -50,12 +52,13 @@ def pct(k, n):
     return f"{k / n:.0%}" if n else "n/a"
 
 
-def load(prompt):
+def load(prompt, results_path=None):
+    results_path = results_path or RESULTS_PATH
     with open(TEST_SET_PATH, newline="", encoding="utf-8") as f:
         test_set = list(csv.DictReader(f))
     latest = {}
-    if RESULTS_PATH.exists():
-        with open(RESULTS_PATH, encoding="utf-8") as f:
+    if results_path.exists():
+        with open(results_path, encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     r = json.loads(line)
@@ -64,12 +67,14 @@ def load(prompt):
     return test_set, latest
 
 
-def report(prompt):
-    test_set, results = load(prompt)
+def report(prompt, anonymize=False):
+    test_set, results = load(prompt, ANON_RESULTS_PATH if anonymize else RESULTS_PATH)
     rows = [{**t, "model": results[t["ticker"]]["direction"], "probability": results[t["ticker"]]["probability"]}
             for t in test_set if t["ticker"] in results]
     n = len(rows)
-    out = [f"# Backtest report: prompt {prompt}", "",
+    out = [f"# Backtest report: prompt {prompt}" + (", anonymized" if anonymize else ""), "",
+           *(["Company name, ticker, CIK and brand names hidden from the model (src/anonymize.py). "
+              "Compare with the named run: python -m eval.named_vs_anon.", ""] if anonymize else []),
            f"{n} of {len(test_set)} companies run. Missing answers count as wrong. "
            f"Test set and analysis fixed in advance (docs/test_plan.md).", ""]
     if n == 0:
@@ -136,8 +141,10 @@ def report(prompt):
 if __name__ == "__main__":
     args = sys.argv[1:]
     prompt = args[args.index("--prompt") + 1] if "--prompt" in args else DEFAULT_PROMPT
-    text = report(prompt)
-    path = REPORT_PATH if prompt == DEFAULT_PROMPT else REPORT_PATH.with_name(f"backtest_200_report_{prompt}.md")
+    anonymize = "--anonymize" in args
+    text = report(prompt, anonymize)
+    stem = "backtest_200_anon_report" if anonymize else "backtest_200_report"
+    path = REPORT_PATH.with_name(f"{stem}.md" if prompt == DEFAULT_PROMPT else f"{stem}_{prompt}.md")
     path.write_text(text + "\n", encoding="utf-8")
     print(text)
     print(f"\nWritten to {path}")

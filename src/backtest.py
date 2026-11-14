@@ -46,16 +46,20 @@ def parse_answer(answer):
             float(probability.group(1)) if probability else None)
 
 
-def run_test(row, investigate, parse=parse_answer, on_event=None, log_path=None, prompt=None):
+def run_test(row, investigate, parse=parse_answer, on_event=None, log_path=None, prompt=None, anonymize=False):
     """Run the agent on one test company in backtest mode. parse(answer) -> (direction, probability).
     The row's skip_newest column (eval/test_set_200.csv) says how many 10-Ks to hide: 1 when the target year is the
-    newest filing, 2 when the company has already filed the following year too (fiscal years ending mid-year)."""
+    newest filing, 2 when the company has already filed the following year too (fiscal years ending mid-year).
+    anonymize=True hides the company's name, ticker, CIK and brands from the model (src/anonymize.py; Nov 12)."""
     started = time.time()
     skip = int(row.get("skip_newest") or SKIP_NEWEST)
     extra = {"prompt": prompt} if prompt else {}
+    if anonymize:
+        extra["anonymize"] = True
     out = investigate(row["ticker"], on_event=on_event, log_path=log_path, skip_newest=skip, **extra)
     direction, probability = parse(out["answer"])
     if "no data found" in out["answer"].lower()[:300]:
         direction = None
     return {"ticker": row["ticker"], "out": out, "direction": direction, "probability": probability,
-            "correct": is_correct(direction, row["truth"]), "seconds": round(time.time() - started), "ts": time.time()}
+            "correct": is_correct(direction, row["truth"]), "seconds": round(time.time() - started), "ts": time.time(),
+            "anonymized": anonymize}
