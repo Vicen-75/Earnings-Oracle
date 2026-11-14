@@ -49,3 +49,25 @@ The text above is the metric as fixed on Oct 22 and is left unchanged. Each note
 6. **Named before anonymized.** The anonymizer is not built yet (issue #27), so the first runs are named. The headline metric stays anonymized accuracy; it will be reported, with the named-vs-anonymized gap, once #27 and #41 are done.
 7. **Before-and-after.** `PROMPT_V1` to `PROMPT_V2` is superseded: the prompts are now `TOOL_SYSTEM_V3` to `V5` (`src/prompts.py`, V5 the default). The comparison is V5 against a V6, tried on the 20 and measured once on the 200 (issue #45).
 8. **Robustness set.** The invalid-ticker case now expects a helpful answer (suggesting the company the user likely meant) instead of only an error (issue #50).
+
+### Nov 14, 2026
+
+Written by Vicente after the final runs; drafted with help from Claude. Numbers from the reports named in each point.
+
+1. **The headline number, anonymized (#41).** On set A (200 companies, prompt V5) the model is right on **118 of 200
+   (59%) anonymized** against 121 of 200 (60%) named; 12 against 9 companies separate the two runs, p = 0.66, no clear
+   difference (`eval/named_vs_anon_report.md`, `eval/backtest_200_anon_report.md`). Always increase scores 126 of 200
+   (63%) on the same companies. Caveat: the model still names 169 of 199 companies from the anonymized MD&A
+   (`eval/anonymize_check_200.csv`, `docs/contamination.md`), so anonymizing removes the name, not the identity. On the
+   30 companies it cannot name, named 20 and anonymized 19 of 30: a hint, too few to test.
+2. **Test result, V6 (#45).** On set B, pre-registered in `docs/test_plan.md`, V6 is right on 135 of 200 against 123
+   for always increase (p = 0.22), 120 for momentum (p = 0.086) and 80 for reverse momentum; by the rule fixed on
+   Nov 6 it does not beat all three baselines (`eval/set_b_stage2_report.md`). Set D, 400 more companies, one look:
+   245 of 400 against 254 for always increase (`eval/set_d_report.md`). Over the 800 companies of sets B, C and D,
+   V6 is 1.8 points above always increase (interval about -2.4 to +5.9), and clearly above both momentum rules.
+3. **Before-and-after (item 7 of Nov 6).** V5 against V6 on set B: 134 against 135 of 200, p = 1.0. The prompt change
+   did not move accuracy; neither did any single part of V6 in the set B ablation (Holm, all p > 0.6).
+4. **What the app runs.** Since Nov 14 the deployed app runs **V6 with one run** (`APP_PROMPT` in `app.py`): as
+   accurate as V5 and as V6 with three runs on set B, the cheapest of the three ($0.024 per analysis against $0.031
+   for V5, `eval/cost_report.md`), and its MD&A pass is schema-checked structured output. Evaluation scripts keep V5
+   as their default so the committed results can be rerun as they were.
