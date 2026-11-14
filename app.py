@@ -484,7 +484,7 @@ def analyze_tab():
     # Nov 12 (German): the ticker box comes first, the examples under it as a shortcut.
     with st.form("ticker_form", border=False):
         ticker_col, button_col = st.columns([5, 1], vertical_alignment="bottom")
-        ticker_col.text_input("Ticker", key="ticker", placeholder="e.g. CAT, ADBE, HD")
+        ticker_col.text_input("Ticker or company name", key="ticker", placeholder="e.g. CAT, ADBE, HD or Microsoft")
         if button_col.form_submit_button("Analyze", type="primary", width="stretch"):
             st.session_state.run_now = True
     cols = st.columns([1.1] + [1] * (len(EXAMPLES) - 1) + [0.9], vertical_alignment="center")
@@ -511,6 +511,19 @@ def analyze_tab():
                             ". With no annual report there is nothing for the model to read.")
             else:
                 st.error(company["error"])
+                if "was not found on EDGAR" in company["error"]:
+                    # --- Nicolas (#50): a mistyped ticker or a company name gets close matches to pick from.
+                    # Searched only when the ticker is unknown, so a valid ticker runs as before (Nov 14).
+                    from src.company_search import suggest_companies
+                    try:
+                        matches = suggest_companies(st.session_state.get("ticker") or "")
+                    except Exception:                      # never let the search break the page
+                        matches = []
+                    if matches:
+                        st.caption("Did you mean one of these companies?")
+                        for col, m in zip(st.columns(len(matches)), matches):
+                            col.button(f"{m['name']} ({m['ticker']})", key=f"suggest_{m['ticker']}",
+                                       on_click=pick_example, args=(m["ticker"],), width="stretch")
             st.stop()
 
         hit = cached_analysis(ticker)
