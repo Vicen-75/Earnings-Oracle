@@ -16,11 +16,12 @@ from google.genai import types
 from src import edgar
 from src.llm import MODEL
 from src.key_pool import pool                       # several API keys, one per analysis (Nov 6)
-from src.prompts import PROMPTS
+from src.prompts import PROMPTS, build_v6
 from src import ratio_directory
 
 from src import mdna as mdna_impl                      # real MD&A extractor (Nicolas)
 from src.locate_mdna import locate_mdna                # fallback: a small agent finds the MD&A via the contents
+from src.mdna_items import read_mdna_items              # V6 (#45): the structured pass over the MD&A, a tool
 from src.anonymize import Anonymizer, TICKER_ALIAS       # issue #27 (Vicente): hides the company from the model
 try:
     from src import ratios as ratio_impl               # noqa: F401  (issue: ratio calculator, Vicente)
@@ -40,6 +41,11 @@ def _under_construction(tool_name):
 MAX_TOOL_CALLS = 9          # hard stop so one ticker cannot burn the free tier (V5 leaves room to go back and check)
 DEFAULT_PROMPT = "V5"
 THINKING_LEVEL = "LOW"      # Nov 5: was MINIMAL; LOW lets the model plan its investigation instead of following a script
+# Nov 11 (V6, #45): V6 runs three times per company and averages, which needs runs that can differ. V6 uses Gemini's
+# default temperature, 1.0; every earlier prompt keeps 0, so V5 behaves exactly as before.
+TEMPERATURE = {"V6": 1.0, "V7": 1.0}          # V7 (Nov 11): same settings as V6
+USES_V6_TOOLS = {"V6", "V7"}
+V6_ONLY_TOOLS = {"read_mdna_items"}     # earlier prompts never see this tool
 LOG_PATH = Path("eval/tool_log.jsonl")          # command-line runs (committed: evidence for the report)
 APP_LOG_PATH = Path("eval/app_runs.jsonl")      # app runs (git-ignored: local record so a run can be reviewed later)
 
@@ -89,6 +95,13 @@ TOOLS = types.Tool(function_declarations=[
              "MD&A through the filing's table of contents (for companies whose Item 7 only points elsewhere). "
              "Returns the same sections as get_mdna, or an error if it also fails.",
              {"cik": S(type="STRING")}, ["cik"]),
+    _declare("read_mdna_items",
+             "Reads Management's Discussion and Analysis from the last two 10-Ks and lists the specific items in it: "
+             "guidance (with direction and size), last year's unusual gains and charges, named headwinds and "
+             "tailwinds, segment trends. Each item has a quote checked word for word against the MD&A and says whether it sits "
+             "below operating income (interest, other income, pension, taxes). Falls back to "
+             "the table-of-contents search on its own. Returns an error if no MD&A can be found.",
+             {"cik": S(type="STRING")}, ["cik"]),
 ])
 
 IMPL = {
@@ -97,6 +110,7 @@ IMPL = {
     "compute_ratios": ratio_impl.compute_ratios if RATIOS_AVAILABLE else _under_construction("compute_ratios"),
     "get_mdna": mdna_impl.get_mdna,
     "locate_mdna": locate_mdna,
+    "read_mdna_items": read_mdna_items,
 }
 
 
@@ -128,6 +142,11 @@ ABLATIONS = {
                       "you received, then give your final answer, changed if the evidence changes it. Either way, use "
                       "the same answer format and end it with one line \"Self-check: ...\" after the Rationale.",
     },
+    # Nov 11 (#45): the component ablation of V6 on set B (docs/test_plan.md). Each arm is V6 with one component
+    # switched off, compared with V6's first run on the same companies. They swap the prompt instead of adding a note.
+    "no_downward": {"for_prompt": "V6", "drop": set(), "prompt": build_v6(downward=False)},
+    "no_oneoff": {"for_prompt": "V6", "drop": set(), "prompt": build_v6(oneoff=False)},
+    "no_structured": {"for_prompt": "V6", "drop": {"read_mdna_items"}, "prompt": build_v6(structured=False)},
 }
 
 
@@ -176,6 +195,22 @@ def observe(tool, result):
         if result.get("missing_filings"):
             text += f"; not found for FY ending {', '.join(result['missing_filings'])}"
         return text
+    if tool == "read_mdna_items":
+        items = result.get("items", [])
+        kinds = {}
+        for item in items:
+            kinds[item.get("kind")] = kinds.get(item.get("kind"), 0) + 1
+        years = ", ".join(f["fiscal_year_end"] for f in result.get("filings", []))
+        text = f"{len(items)} MD&A item(s) from FY ending {years}: " + ", ".join(f"{n} {k}" for k, n in kinds.items())
+        tables = sum(1 for item in items if item.get("source") == "table")
+        if tables:
+            text += f"; {tables} from tables (no quote)"
+        below = sum(1 for item in items if item.get("below_operating_line"))
+        if below:
+            text += f"; {below} below operating income"
+        if result.get("quotes_removed"):
+            text += f"; {result['quotes_removed']} unverified quote(s) removed"
+        return text
     if tool == "locate_mdna":
         parts = [f"FY ending {f['fiscal_year_end']} ({f['chars']:,} characters, {f['how_found']}"
                  f"{', truncated' if f['truncated'] else ''})" for f in result.get("filings", [])]
@@ -188,6 +223,8 @@ def _keep_for_display(tool, result):
     """What the app shows from each tool result. The MD&A text itself is not kept (it can be 250,000 characters)."""
     if not isinstance(result, dict) or "error" in result:
         return result
+    if tool == "read_mdna_items":
+        return {k: v for k, v in result.items() if k != "cik"}
     if tool in ("get_mdna", "locate_mdna"):
         shown = {"filings": [{k: f[k] for k in ("fiscal_year_end", "url", "chars", "truncated", "how_found") if k in f}
                              for f in result["filings"]]}
@@ -229,7 +266,8 @@ def _tools_for_run(skip_newest):
             "get_company_card": lambda **a: edgar.company_card(**a, **hide),
             "compute_ratios": lambda **a: ratio_impl.compute_ratios(**a, **hide),
             "get_mdna": lambda **a: mdna_impl.get_mdna(**a, **hide),
-            "locate_mdna": lambda **a: locate_mdna(**a, **hide)}
+            "locate_mdna": lambda **a: locate_mdna(**a, **hide),
+            "read_mdna_items": lambda **a: read_mdna_items(**a, **hide)}
 
 
 def investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, write_log=True, log_path=None,
@@ -250,19 +288,23 @@ def _investigate(ticker, anonymize=False, prompt=DEFAULT_PROMPT, on_event=None, 
     on_event(event) is called after every tool call ({"type": "step", ...}) and on rate-limit waits, so the app can
     show progress live. write_log=False keeps app runs out of eval/tool_log.jsonl."""
     cut = ABLATIONS[ablation] if ablation else None             # issue #52: e.g. no MD&A tools
-    run_tools = types.Tool(function_declarations=[d for d in TOOLS.function_declarations if d.name not in cut["drop"]]) \
-        if cut else TOOLS
-    self_check = cut["self_check"] if cut else SELF_CHECK
+    if cut and cut.get("for_prompt", prompt) != prompt:
+        raise ValueError(f"ablation {ablation} is defined for prompt {cut['for_prompt']}, not {prompt}")
+    hidden = (cut["drop"] if cut else set()) | (set() if prompt in USES_V6_TOOLS else V6_ONLY_TOOLS)
+    run_tools = types.Tool(function_declarations=[d for d in TOOLS.function_declarations if d.name not in hidden])
+    self_check = cut.get("self_check", SELF_CHECK) if cut else SELF_CHECK
+    system = cut.get("prompt", PROMPTS[prompt]) if cut else PROMPTS[prompt]
+    if cut and cut.get("note"):
+        system += f"\n\n{cut['note']}"
     config = types.GenerateContentConfig(
-        system_instruction=PROMPTS[prompt] + (f"\n\n{cut['note']}" if cut else ""),
+        system_instruction=system,
         tools=[run_tools],
-        temperature=0,
+        temperature=TEMPERATURE.get(prompt, 0),
         thinking_config=types.ThinkingConfig(thinking_level=THINKING_LEVEL),
     )
     log, results, calls, draft, nudged = [], {}, 0, None, False
     tools = _tools_for_run(skip_newest)
-    if cut:
-        tools = {**tools, **{name: _not_available for name in cut["drop"]}}
+    tools = {**tools, **{name: _not_available for name in hidden}}
     usage = {"prompt_tokens": 0, "output_tokens": 0, "model_calls": 0}
 
     def brand_scan_call(model, text, cfg):
@@ -383,7 +425,8 @@ def run(ticker, anonymize=False, prompt=DEFAULT_PROMPT, verbose=True):
 def _write_log(ticker, log, answer, usage, anonymize, prompt, path=LOG_PATH, skip_newest=None, ablation=None):
     path.parent.mkdir(exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps({"ticker": ticker, "prompt": prompt, "thinking": THINKING_LEVEL, "anonymized": anonymize,
+        f.write(json.dumps({"ticker": ticker, "prompt": prompt, "thinking": THINKING_LEVEL,
+                            "temperature": TEMPERATURE.get(prompt, 0), "anonymized": anonymize,
                             "backtest_skip_newest": skip_newest, "ablation": ablation,
                             "ratios_available": RATIOS_AVAILABLE, "tools": log,
                             "usage": usage, "answer": answer, "ts": time.strftime("%Y-%m-%d %H:%M:%S")}) + "\n")
