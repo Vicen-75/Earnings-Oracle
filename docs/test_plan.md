@@ -346,3 +346,39 @@ the code are committed), then `python -m eval.analyze_set_d`, once.
 
 **Files that were in the set B freeze.** `eval/run_backtest.py` gains a set D mode and this plan gains this note. Set
 B is finished and the commit tagged `v6-frozen` is unchanged. No file under `src/` changes.
+
+### Nov 25, 2026: five runs per company per version, with tokens (PROJECT_DIRECTIVES §5.5 element 4)
+
+Written before any of these runs. Drafted with help from Claude; the decisions are the team's.
+
+**Why.** §5.5 element 4 asks for every input run at least five times per version, with tokens reported; a subset is
+allowed. Until now V6 has three runs per company (set B) and V5 one. This adds the five runs, fresh, on a fixed subset.
+
+**Companies.** The first 20 companies of set B in the order of `eval/test_set_200b.csv`, skipping any ticker that
+ends in Q (the marker for a company in bankruptcy proceedings), chosen by that rule and nothing else. Within the first
+20 this skips TSEOQ (Trinseo, in bankruptcy), so the 21st company, AMAT, comes in: FFIN, LEN, BOX, MNR, SSNC, MSCI,
+VSEC, NTAP, PG, COLD, SSB, RPD, FRME, DOW, SARO, KMI, AFRM, CTVA, GS, AMAT. Truth, target metric and the hidden year
+come from that file, unchanged.
+
+**Versions.** V5 as in all earlier runs (temperature 0, one run) and V6 as the app runs it (temperature 1.0, one run,
+the `read_mdna_items` tool). Thinking LOW for both. Backtest mode: every tool hides the target year's 10-K, as in sets
+A to D. The code under `src/` is the code of the `presentation` release; nothing in it changes for these runs.
+
+**Runs.** Five rounds. In each round every company runs once with V5 and once with V6, in set order, so both versions
+see the same hours of the night and the same state of Google's service. All runs are fresh: earlier set B runs are
+not reused, so all ten runs per company come from the same code and the same night. A run that fails (a Google outage
+or a quota stop) is retried until it finishes or the job reaches its time limit of 12 hours from the start; a
+company-version that does not reach five finished runs is reported with the number it has.
+
+**What is reported, descriptive only (no hypothesis test).**
+1. Stability: for each company and version, how many of the five runs give the same direction (5 of 5, 4 of 5, 3 of
+   5), and the share of companies where all five agree.
+2. Accuracy: correct out of 20 in each of the five rounds, per version, with the lowest and highest round, and the
+   accuracy of the majority of five. A missing answer counts as wrong, as everywhere else.
+3. Cost: prompt, output and thinking tokens billed per run (from the run's usage record, every model call included),
+   model calls and seconds per run; median and the 10th and 90th percentile per version, and the total per version.
+
+**Files.** `eval/five_runs_results.jsonl` (one line per run), `eval/five_runs_runs.jsonl` (full traces),
+`eval/five_runs_report.md`. Run unattended with the remaining awkward-input rows (`eval/awkward_inputs.csv`) by one
+script that retries what an outage stopped; the report is written once, when every run is in or the time limit is
+reached.
