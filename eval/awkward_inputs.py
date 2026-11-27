@@ -248,6 +248,7 @@ def main(argv=None, guard=True):
                                   "suggestions": got["page"]["suggestions"], "model_calls": got["model_calls"],
                                   "served_planted": got["served_planted"], "answer": got["answer"],
                                   "usage": got.get("usage"), "exceptions": got["page"].get("exceptions")}) + "\n")
+            log.flush()                       # Nov 27: on disk at once, so the wrapper sees the step is alive
 
     if args.only and RESULTS.exists():            # a rerun of some rows replaces only those rows (Nov 25)
         order = [r["id"] for r in csv.DictReader(EXPECTED.open(encoding="utf-8"))]
