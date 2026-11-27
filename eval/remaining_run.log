@@ -1,0 +1,23 @@
+[2026-11-25 11:56:33] === Remaining runs, unattended, until 2026-11-25 23:56 ===
+[2026-11-25 11:56:33] awkward inputs: 4 row(s) without a verdict (O2, R1b, R1c, M3); five runs: 0/200 finished
+[2026-11-25 11:56:33] Awkward inputs: running O2, R1b, R1c, M3.
+[2026-11-25 12:02:55] Five runs: starting a pass.
+[2026-11-27 09:16:17] awkward inputs: 4 row(s) without a verdict (O2, R1b, R1c, M3); five runs: 14/200 finished
+[2026-11-27 09:16:17] Time limit reached.
+[2026-11-27 09:16:17] === Done. Reports: eval/awkward_inputs_report.md and eval/five_runs_report.md ===
+[2026-11-27 09:16:18] awkward inputs: 4 row(s) without a verdict (O2, R1b, R1c, M3); five runs: 14/200 finished
+[2026-11-27 11:35:27] === Remaining runs, unattended, until 2026-11-27 23:35 ===
+[2026-11-27 11:35:27] awkward inputs: 4 row(s) without a verdict (O2, R1b, R1c, M3); five runs: 14/200 finished
+[2026-11-27 11:35:27] Awkward inputs: running O2, R1b, R1c, M3.
+[2026-11-27 11:37:27] Five runs: starting a pass.
+[2026-11-27 13:01:58] Five runs: ending the step (no result line for 60 minutes).
+[2026-11-27 13:01:58] awkward inputs: 0 row(s) without a verdict; five runs: 119/200 finished
+[2026-11-27 13:01:58] Waiting 5 minutes (progress).
+[2026-11-27 13:06:58] Five runs: starting a pass.
+[2026-11-27 13:15:28] awkward inputs: 0 row(s) without a verdict; five runs: 155/200 finished
+[2026-11-27 13:15:28] Waiting 5 minutes (progress).
+[2026-11-27 13:20:28] Five runs: starting a pass.
+[2026-11-27 13:36:28] awkward inputs: 0 row(s) without a verdict; five runs: 200/200 finished
+[2026-11-27 13:36:28] Everything is done.
+[2026-11-27 13:36:28] === Done. Reports: eval/awkward_inputs_report.md and eval/five_runs_report.md ===
+[2026-11-27 13:36:28] awkward inputs: 0 row(s) without a verdict; five runs: 200/200 finished
